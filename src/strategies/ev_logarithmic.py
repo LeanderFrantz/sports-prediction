@@ -16,6 +16,8 @@ def solve_logarithmic_pure(odds_bookmaker):
     Unterstuetzt sowohl 2-Outcome (Tennis, Basketball) als auch 3-Outcome (Fussball) Wetten.
     Findet k (1/n) so dass sum(p_i ^ k) = 1.0
     """
+    if any(o <= 1.0 for o in odds_bookmaker):
+        raise ValueError(f"All odds must be > 1.0, got: {odds_bookmaker}")
     probs = [1.0 / float(o) for o in odds_bookmaker]
 
     low = 1.0
