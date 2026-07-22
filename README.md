@@ -9,7 +9,7 @@ This project provides a flexible framework for analyzing sports betting odds, ca
   - `fetch_odds_api.py`: Manages communication with "The Odds API" to fetch live odds.
   - `strategies/`: Implements various betting strategies.
     - `ev_logarithmic.py`: Calculates Expected Value (EV) by assessing true probabilities derived from Pinnacle odds using a logarithmic function model. This approach leverages the "wisdom of crowds" reflected in market-leading odds to identify inefficiencies in soft bookmakers' lines. It is designed to handle both 2-outcome (e.g., tennis, basketball) and 3-outcome (e.g., football) sports.
-- `tests/`: Project tests (to be populated).
+ `tests/`: Project tests.
 
 ## Usage
 
