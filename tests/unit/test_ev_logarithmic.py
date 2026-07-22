@@ -1,9 +1,10 @@
 import pytest
 from src.strategies.ev_logarithmic import solve_logarithmic_pure
 
+
 def test_solve_logarithmic_pure_fair_odds():
-    # 50/50 odds
-    odds = [2.0, 2.0]
+    # 50/50 odds (+ bookie markup)
+    odds = [1.9, 1.9]
     true_odds, true_probs = solve_logarithmic_pure(odds)
 
     # Fair odds should be 2.0, probs should be 0.5
@@ -11,6 +12,7 @@ def test_solve_logarithmic_pure_fair_odds():
     assert true_odds[1] == pytest.approx(2.0, abs=0.1)
     assert true_probs[0] == pytest.approx(0.5, abs=0.1)
     assert true_probs[1] == pytest.approx(0.5, abs=0.1)
+
 
 def test_solve_logarithmic_pure_3_outcomes():
     # Example 3-outcome odds (e.g., Football)
