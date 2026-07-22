@@ -84,6 +84,8 @@ def save_odds_to_csv(odds_data: list, file_path: str):
 def analyze_evs(
     sport: str, limit: int = None, data_file: str = None, kelly_fraction: float = 0.25
 ):
+    if not math.isfinite(kelly_fraction) or not 0 <= kelly_fraction <= 1:
+        raise ValueError("kelly_fraction must be finite and between 0 and 1")
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
