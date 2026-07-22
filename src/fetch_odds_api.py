@@ -1,7 +1,7 @@
 """
 fetch_odds_api.py
 =================
-Skript zum Abrufen von Quoten fuer Pinnacle und Winamax via The Odds API.
+Script to fetch odds for Pinnacle and Winamax via The Odds API.
 """
 
 import logging
@@ -11,7 +11,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Lade Konfiguration
+# Load configuration
 config_path = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json"
 )
@@ -20,12 +20,12 @@ try:
         config = json.load(f)
         API_KEY = config.get("api_key")
 except FileNotFoundError:
-    logger.error(f"Konfigurationsdatei nicht gefunden: {config_path}")
+    logger.error(f"Configuration file not found: {config_path}")
     API_KEY = None
 
 BASE_URL = "https://api.the-odds-api.com/v4/sports"
 
-# Sportarten-Konfiguration
+# Sport configuration
 SPORTS_CONFIG = {
     "football": [
         "soccer_germany_bundesliga",
@@ -62,7 +62,13 @@ def get_odds_from_api(
     bookmakers: str = "pinnacle,winamax_fr",
 ) -> list:
     """
-    Ruft die Quoten für eine bestimmte Liga von The Odds API ab.
+    Fetch odds for a specific league from The Odds API.
+
+    :param sport_key: The identifier of the sport/league.
+    :param regions: The regions to fetch odds from, defaults to "eu".
+    :param markets: The betting markets to fetch, defaults to "h2h".
+    :param bookmakers: The bookmakers to fetch odds from, defaults to "pinnacle,winamax_fr".
+    :return: A list of odds data.
     """
     url = f"{BASE_URL}/{sport_key}/odds/"
     params = {
@@ -74,17 +80,17 @@ def get_odds_from_api(
         params["bookmakers"] = bookmakers
 
     logger.info(
-        "Rufe Quoten ab von URL: %s mit regions=%s, markets=%s, bookmakers=%s",
+        "Fetching odds from URL: %s with regions=%s, markets=%s, bookmakers=%s",
         url, regions, markets, bookmakers,
     )
     response = requests.get(url, params=params, timeout=20)
 
-    # Header zur Überprüfung verbleibender Requests ausgeben
+    # Output header to check remaining requests
     remaining_requests = response.headers.get("x-requests-remaining")
     used_requests = response.headers.get("x-requests-used")
     if remaining_requests:
         logger.info(
-            f"API Limits - Genutzt: {used_requests} | Verbleibend: {remaining_requests}"
+            f"API Limits - Used: {used_requests} | Remaining: {remaining_requests}"
         )
 
     response.raise_for_status()
@@ -92,22 +98,28 @@ def get_odds_from_api(
 
 
 def fetch_odds_for_sport(sport_name: str) -> dict:
-    """Holt die Quoten fuer alle konfigurierten Ligen einer Sportart und gibt Erfolge sowie Fehler zurueck."""
+    """
+    Fetch odds for all configured leagues of a sport and return successes and errors.
+
+    :param sport_name: The name of the sport to fetch data for.
+    :raises ValueError: If the sport name is invalid.
+    :return: A dictionary containing 'data' (list of odds) and 'errors' (list of failures).
+    """
     all_data = []
     errors = []
     regions = "eu,uk,us,au"
 
     league_keys = SPORTS_CONFIG.get(sport_name.lower())
     if not league_keys:
-        raise ValueError(f"Ungueltige Sportart. Erlaubt: {list(SPORTS_CONFIG.keys())}")
+        raise ValueError(f"Invalid sport. Allowed: {list(SPORTS_CONFIG.keys())}")
 
     for league in league_keys:
         try:
-            logger.info(f"Lade Quoten fuer {league}...")
+            logger.info(f"Loading odds for {league}...")
             data = get_odds_from_api(sport_key=league, regions=regions, markets="h2h", bookmakers=None)
             all_data.extend(data)
         except Exception as e:
-            logger.error(f"Fehler beim Laden von {league}: {e}")
+            logger.error(f"Error loading {league}: {e}")
             errors.append({"league": league, "error": str(e)})
 
     return {"data": all_data, "errors": errors}

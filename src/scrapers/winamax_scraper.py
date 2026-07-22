@@ -1,32 +1,32 @@
 """
 winamax_scraper.py
 ==================
-Scraper für Winamax-Quoten ohne Headless-Browser.
+Scraper for Winamax odds without a headless browser.
 
-Strategie: Winamax bettet sämtliche Daten (Spiele, Wetten, Quoten, Ergebnisse)
-als `window.PRELOADED_STATE` JSON direkt ins HTML ein. Ein einfacher HTTP-GET
-auf die Sportseite liefert alles — kein Playwright, kein Selenium nötig.
+Strategy: Winamax embeds all data (matches, bets, odds, results)
+directly into the HTML as `window.PRELOADED_STATE` JSON. A simple HTTP-GET
+to the sports page provides everything — no Playwright or Selenium needed.
 
-URL-Schema:
-  Alle Sportarten:  https://www.winamax.fr/paris-sportifs/sports
-  Nur Fußball:      https://www.winamax.fr/paris-sportifs/sports/1
-  Ein Wettbewerb:   https://www.winamax.fr/paris-sportifs/sports/1/competitions/96
+URL Scheme:
+  All sports:       https://www.winamax.fr/paris-sportifs/sports
+  Soccer only:      https://www.winamax.fr/paris-sportifs/sports/1
+  A competition:    https://www.winamax.fr/paris-sportifs/sports/1/competitions/96
 
-Quoten-Format: ganzzahlig in "Cent-Basis" (600 = 6.00, 160 = 1.60)
+Odds format: Integers on a "cent basis" (600 = 6.00, 160 = 1.60)
 """
 
 import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 import requests
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Konstanten
+# Constants
 # ---------------------------------------------------------------------------
 BASE_URL = "https://www.winamax.fr/paris-sportifs/sports"
 
@@ -53,7 +53,7 @@ HEADERS = {
 
 
 # ---------------------------------------------------------------------------
-# Datenklassen
+# Data Classes
 # ---------------------------------------------------------------------------
 @dataclass
 class Outcome:
@@ -61,14 +61,14 @@ class Outcome:
     bet_id: int
     label: str
     available: bool
-    odds: Optional[float] = None  # als Dezimalquote (z.B. 6.00)
+    odds: Optional[float] = None  # as decimal (e.g. 6.00)
 
 
 @dataclass
 class Bet:
     bet_id: int
     label: str
-    outcomes: list = field(default_factory=list)  # list[Outcome]
+    outcomes: list[Outcome] = field(default_factory=list)
 
 
 @dataclass
@@ -88,20 +88,31 @@ class Match:
 
 
 # ---------------------------------------------------------------------------
-# Scraper-Kernfunktionen
+# Core Scraper Functions
 # ---------------------------------------------------------------------------
 
-def _parse_winamax_odds(raw) -> float:
-    """Gibt die Quote direkt als Float zurueck."""
+def _parse_winamax_odds(raw: Any) -> float:
+    """
+    Parse the odds value.
+
+    :param raw: The raw odds value from JSON.
+    :return: The odds as a float.
+    """
     return float(raw)
 
 
 def _extract_preloaded_state(html: str) -> dict:
-    """Extrahiert das PRELOADED_STATE-JSON-Objekt aus dem HTML."""
+    """
+    Extract the PRELOADED_STATE JSON object from HTML.
+
+    :param html: The raw HTML content.
+    :return: The parsed state dictionary.
+    :raises ValueError: If PRELOADED_STATE is not found.
+    """
     marker = "var PRELOADED_STATE = "
     start_idx = html.find(marker)
     if start_idx < 0:
-        raise ValueError("PRELOADED_STATE nicht im HTML gefunden.")
+        raise ValueError("PRELOADED_STATE not found in HTML.")
     start_idx += len(marker)
 
     payload = html[start_idx:].lstrip()
@@ -111,18 +122,24 @@ def _extract_preloaded_state(html: str) -> dict:
 
 def fetch_winamax_page(url: str, session: requests.Session) -> dict:
     """
-    Laedt eine Winamax-Sportseite und gibt das geparste PRELOADED_STATE zurueck.
-    Wirft requests.HTTPError bei HTTP-Fehlern.
+    Load a Winamax sports page and return the parsed PRELOADED_STATE.
+
+    :param url: The URL to fetch.
+    :param session: The requests session to use.
+    :return: The parsed state dictionary.
+    :raises requests.HTTPError: If the request fails.
     """
     resp = session.get(url, headers=HEADERS, timeout=20)
     resp.raise_for_status()
     return _extract_preloaded_state(resp.text)
 
 
-def parse_matches(state: dict) -> list:
+def parse_matches(state: dict) -> list[Match]:
     """
-    Wandelt den PRELOADED_STATE in eine Liste von Match-Objekten um,
-    inklusive der Hauptwette (1X2) mit Quoten.
+    Convert PRELOADED_STATE into a list of Match objects.
+
+    :param state: The parsed state dictionary.
+    :return: A list of Match objects, including main 1X2 bets.
     """
     raw_matches: dict = state.get("matches", {})
     raw_bets: dict = state.get("bets", {})
@@ -131,7 +148,7 @@ def parse_matches(state: dict) -> list:
 
     matches = []
     for mid_str, m in raw_matches.items():
-        # Startzeit parsen
+        # Parse match start
         match_start = None
         ts = m.get("matchStart")
         if ts:
@@ -140,7 +157,7 @@ def parse_matches(state: dict) -> list:
             except (TypeError, ValueError):
                 pass
 
-        # Hauptwette (1X2) zusammenbauen
+        # Assemble main bet (1X2)
         main_bet = None
         main_bet_id = m.get("mainBetId")
         if main_bet_id and str(main_bet_id) in raw_bets:
@@ -188,20 +205,15 @@ def parse_matches(state: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Oeffentliche API
+# Public API
 # ---------------------------------------------------------------------------
 
-def get_football_matches(competition_id: Optional[int] = None) -> list:
+def get_football_matches(competition_id: Optional[int] = None) -> list[Match]:
     """
-    Laedt alle Fussball-Spiele von Winamax.
+    Load all soccer matches from Winamax.
 
-    Args:
-        competition_id: Optional - schraenkt auf einen Wettbewerb ein
-                        (z.B. 96 fuer Premier League).
-                        None = alle Wettbewerbe.
-
-    Returns:
-        Liste von Match-Objekten mit Quoten.
+    :param competition_id: Optional - restricts to a specific competition.
+    :return: A list of Match objects with odds.
     """
     if competition_id:
         url = f"{BASE_URL}/{SPORT_IDS['football']}/competitions/{competition_id}"
@@ -209,16 +221,18 @@ def get_football_matches(competition_id: Optional[int] = None) -> list:
         url = f"{BASE_URL}/{SPORT_IDS['football']}"
 
     with requests.Session() as session:
-        logger.info("Lade Winamax-Seite: %s", url)
+        logger.info("Loading Winamax page: %s", url)
         state = fetch_winamax_page(url, session)
         matches = parse_matches(state)
-        logger.info("Gefunden: %d Spiele", len(matches))
+        logger.info("Found: %d matches", len(matches))
         return matches
 
 
-def get_all_sports_overview() -> dict:
+def get_all_sports_overview() -> dict[str, dict[str, Any]]:
     """
-    Gibt einen Ueberblick ueber alle verfuegbaren Sportarten und deren Match-Anzahl.
+    Get an overview of all available sports and their match counts.
+
+    :return: A dictionary mapping sport names to match count data.
     """
     url = f"{BASE_URL}"
     with requests.Session() as session:
@@ -246,8 +260,8 @@ if __name__ == "__main__":
     print("WINAMAX SCRAPER - Demo")
     print("=" * 70)
 
-    # 1) Sports-Uebersicht
-    print("\n Sportarten-Uebersicht:")
+    # 1) Sports Overview
+    print("\n Sports Overview:")
     try:
         overview = get_all_sports_overview()
         for name, info in list(overview.items())[:10]:
@@ -255,13 +269,13 @@ if __name__ == "__main__":
                 f"  {name:20s} | Main: {info['main_matches']:4d} | Live: {info['live_matches']:3d}"
             )
     except Exception as e:
-        print(f"  Fehler: {e}")
+        print(f"  Error: {e}")
 
-    # 2) Fussball-Matches mit Quoten
-    print("\n Fussball-Matches (erste 10):")
+    # 2) Soccer Matches with odds
+    print("\n Soccer Matches (first 10):")
     try:
         matches = get_football_matches()
-        print(f"  Insgesamt: {len(matches)} Spiele\n")
+        print(f"  Total: {len(matches)} matches\n")
         for m in matches[:10]:
             start_str = (
                 m.match_start.strftime("%d.%m %H:%M") if m.match_start else "?"
@@ -269,14 +283,14 @@ if __name__ == "__main__":
             odds_str = "-"
             if m.main_bet and m.main_bet.outcomes:
                 odds_vals = [
-                    f"{o.label}: {o.odds:.2f}" if o.odds else f"{o.label}: n/v"
+                    f"{o.label}: {o.odds:.2f}" if o.odds else f"{o.label}: n/a"
                     for o in m.main_bet.outcomes
                 ]
                 odds_str = " | ".join(odds_vals)
             print(f"  [{start_str}] {m.title}")
-            print(f"           Quoten: {odds_str}")
-            print(f"           Weitere Wetten: {m.more_bets_count}")
+            print(f"           Odds: {odds_str}")
+            print(f"           Additional bets: {m.more_bets_count}")
             print()
     except Exception as e:
-        print(f"  Fehler: {e}")
+        print(f"  Error: {e}")
         raise

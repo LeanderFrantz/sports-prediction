@@ -9,12 +9,16 @@ from ..fetch_odds_api import SPORTS_CONFIG, fetch_odds_for_sport
 logger = logging.getLogger(__name__)
 
 
-def solve_logarithmic_pure(odds_bookmaker):
+def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], list[float]]:
     """
-    Berechnet die fairen Wahrscheinlichkeiten basierend auf Pinnacle-Quoten
-    unter Verwendung des Logarithmic Function Models.
-    Unterstuetzt sowohl 2-Outcome (Tennis, Basketball) als auch 3-Outcome (Fussball) Wetten.
-    Findet k (1/n) so dass sum(p_i ^ k) = 1.0
+    Calculate fair probabilities based on Pinnacle odds using the Logarithmic Function Model.
+
+    Supports both 2-outcome (e.g., Tennis, Basketball) and 3-outcome (e.g., Football) bets.
+    Finds k (1/n) such that sum(p_i ^ k) = 1.0.
+
+    :param odds_bookmaker: A list of decimal odds from the bookmaker.
+    :return: A tuple containing fair odds and fair probabilities.
+    :raises ValueError: If any odds are <= 1.0.
     """
     if any(o <= 1.0 for o in odds_bookmaker):
         raise ValueError(f"All odds must be > 1.0, got: {odds_bookmaker}")
@@ -41,8 +45,13 @@ def solve_logarithmic_pure(odds_bookmaker):
     return true_odds, true_probs
 
 
-def load_odds_from_csv(file_path: str):
-    """Laedt die Quoten aus einer CSV-Datei."""
+def load_odds_from_csv(file_path: str) -> list[dict]:
+    """
+    Load odds data from a CSV file.
+
+    :param file_path: Path to the CSV file.
+    :return: A list of match dictionaries.
+    """
     df = pd.read_csv(file_path)
     odds_data = []
     for _, row in df.iterrows():
@@ -59,9 +68,14 @@ def load_odds_from_csv(file_path: str):
     return odds_data
 
 
-def save_odds_to_csv(odds_data: list, file_path: str):
-    """Speichert die geladenen Quoten in einer CSV-Datei."""
-    # Konvertierung der Daten in ein flaches Format für die CSV
+def save_odds_to_csv(odds_data: list[dict], file_path: str) -> None:
+    """
+    Save loaded odds data to a CSV file.
+
+    :param odds_data: List of match dictionaries to save.
+    :param file_path: Path to the destination CSV file.
+    """
+    # Convert data to a flat format for CSV
     rows = []
     for match in odds_data:
         rows.append(
@@ -78,12 +92,20 @@ def save_odds_to_csv(odds_data: list, file_path: str):
 
     df = pd.DataFrame(rows)
     df.to_csv(file_path, index=False)
-    logger.info(f"Quoten erfolgreich in {file_path} gespeichert.")
+    logger.info(f"Odds successfully saved to {file_path}.")
 
 
 def analyze_evs(
     sport: str, limit: int = None, data_file: str = None, kelly_fraction: float = 0.25
-):
+) -> None:
+    """
+    Analyze expected value (EV) for a given sport or data file.
+
+    :param sport: The sport identifier to fetch and analyze.
+    :param limit: Maximum number of positive EV bets to display.
+    :param data_file: Optional path to a CSV file to skip API fetching.
+    :param kelly_fraction: The fractional Kelly multiplier to use.
+    """
     if not math.isfinite(kelly_fraction) or not 0 <= kelly_fraction <= 1:
         raise ValueError("kelly_fraction must be finite and between 0 and 1")
     logging.basicConfig(
@@ -91,7 +113,7 @@ def analyze_evs(
     )
 
     if data_file:
-        logger.info(f"Lade Quoten aus Datei: {data_file}...")
+        logger.info(f"Loading odds from file: {data_file}...")
         odds_data = load_odds_from_csv(data_file)
     else:
         result = fetch_odds_for_sport(sport)
@@ -100,18 +122,18 @@ def analyze_evs(
         
         if errors:
             for err in errors:
-                logger.warning(f"Fehler bei Liga {err['league']}: {err['error']}")
+                logger.warning(f"Error in league {err['league']}: {err['error']}")
         
         if not odds_data:
-            logger.error(f"Keine Daten für {sport} abrufbar.")
+            logger.error(f"No data available for {sport}.")
             return
 
-        # Automatisches Speichern, falls keine Datei angegeben wurde
+        # Auto-save if no file was specified
         if not data_file:
             save_odds_to_csv(odds_data, f"data/{sport.lower()}_odds_data.csv")
 
     logger.info(
-        f"Insgesamt {len(odds_data)} {sport.capitalize()}-Spiele geladen. Starte EV-Berechnung..."
+        f"Loaded {len(odds_data)} {sport.capitalize()} matches in total. Starting EV calculation..."
     )
 
     positive_ev_bets = []
@@ -121,13 +143,13 @@ def analyze_evs(
         away_team = match.get("away_team")
         sport_title = match.get("sport_title")
 
-        # 1) Finde Pinnacle Odds
+        # 1) Find Pinnacle odds
         pinnacle_odds = None
-        outcomes_order = []  # Reihenfolge der Teams fuer das Match
+        outcomes_order = []  # Order of teams for the match
 
         for bm in match.get("bookmakers", []):
             if bm.get("key") == "pinnacle":
-                # Finde das h2h-Market explizit
+                # Explicitly find h2h market
                 h2h_market = next(
                     (m for m in bm.get("markets", []) if m.get("key") == "h2h"), None
                 )
@@ -136,10 +158,10 @@ def analyze_evs(
 
                 outcomes = h2h_market.get("outcomes", [])
 
-                # Wir bauen die Quoten dynamisch je nach Outcome-Anzahl (2 oder 3)
+                # Build odds dynamically based on number of outcomes (2 or 3)
                 odds_dict = {oc["name"]: oc["price"] for oc in outcomes}
 
-                # Draw Key suchen
+                # Search for Draw key
                 draw_key = next(
                     (
                         k
@@ -151,7 +173,7 @@ def analyze_evs(
                     None,
                 )
 
-                # Bestimme Reihenfolge
+                # Determine order
                 if draw_key:
                     # 3 Outcomes: Home, Draw, Away
                     if home_team in odds_dict and away_team in odds_dict:
@@ -173,18 +195,18 @@ def analyze_evs(
         if not pinnacle_odds:
             continue
 
-        # 2) Berechne Fair Odds mit Logarithmic Function Model
+        # 2) Calculate Fair Odds using Logarithmic Function Model
         try:
             fair_odds, fair_probs = solve_logarithmic_pure(pinnacle_odds)
         except Exception as e:
             logger.error(
-                f"Fehler bei EV-Berechnung fuer {home_team} - {away_team}: {e}"
+                f"Error calculating EV for {home_team} - {away_team}: {e}"
             )
             continue
 
-        # 3) Vergleiche mit allen anderen Bookmakern
+        # 3) Compare with all other bookmakers
         seen_bets = set()
-        # Exchange-Keys, die ignoriert werden sollen
+        # Excluded exchange keys
         excluded_keys = {"h2h_lay", "betfair_ex_uk", "betfair_ex_eu", "betfair_ex_au"}
 
         for bm in match.get("bookmakers", []):
@@ -192,7 +214,7 @@ def analyze_evs(
             if bm_key == "pinnacle" or bm_key in excluded_keys:
                 continue
 
-            # Finde das h2h-Market explizit
+            # Explicitly find h2h market
             h2h_market = next(
                 (m for m in bm.get("markets", []) if m.get("key") == "h2h"), None
             )
@@ -202,11 +224,11 @@ def analyze_evs(
             outcomes = h2h_market.get("outcomes", [])
             odds_dict = {oc["name"]: oc["price"] for oc in outcomes}
 
-            # Hat dieser Bookmaker alle Quoten fuer unsere Outcomes?
+            # Does this bookie have all odds for our outcomes?
             bookie_odds = []
             valid = True
             for name in outcomes_order:
-                # Bei Draw flexibel matchen
+                # Flexible matching for Draw
                 if name == "Draw":
                     draw_key = next(
                         (
@@ -230,7 +252,7 @@ def analyze_evs(
             if not valid or len(bookie_odds) != len(pinnacle_odds):
                 continue
 
-            # Berechne EV fuer jedes Outcome
+            # Calculate EV for each outcome
             for i in range(len(pinnacle_odds)):
                 b_odd = bookie_odds[i]
                 f_prob = fair_probs[i]
@@ -238,17 +260,17 @@ def analyze_evs(
 
                 ev = (f_prob * b_odd) - 1.0
 
-                if ev > 0.0:  # Positiver EV!
-                    # Dedup-Logik: Identifiziere Wette eindeutig
+                if ev > 0.0:  # Positive EV!
+                    # Deduplication logic: Identify bet uniquely
                     bet_key = (f"{home_team} - {away_team}", outcomes_order[i], b_odd)
                     if bet_key in seen_bets:
                         continue
                     seen_bets.add(bet_key)
 
                     # Kelly Criterion
-                    # b = odds - 1 (Netto-Gewinn)
+                    # b = odds - 1 (net profit)
                     # p = fair_prob
-                    # q = 1 - p (Verlustwahrscheinlichkeit)
+                    # q = 1 - p (loss probability)
                     # Kelly = (p * b - q) / b
                     b = b_odd - 1
                     kelly = (f_prob * b - (1 - f_prob)) / b
@@ -277,16 +299,16 @@ def analyze_evs(
     limit_title = f" (Top {limit})" if limit is not None else " (Alle)"
 
     print("\n" + "=" * 80)
-    print(f" SPIELE MIT POSITIVEM EXPECTED VALUE (EV){limit_title} — Logarithmic Model")
+    print(f" MATCHES WITH POSITIVE EXPECTED VALUE (EV){limit_title} — Logarithmic Model")
     print("=" * 80)
     if not display_bets:
-        print(" Keine Wetten mit positivem EV gefunden.")
+        print(" No bets with positive EV found.")
     else:
         for idx, bet in enumerate(display_bets, 1):
             print(f"{idx}. [{bet['league']}] {bet['match']}")
-            print(f"   Tipp: {bet['outcome']} ({bet['type']})")
+            print(f"   Tip: {bet['outcome']} ({bet['type']})")
             print(
-                f"   Buchmacher: {bet['bookmaker']} | Quote: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']})"
+                f"   Bookmaker: {bet['bookmaker']} | Odds: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']})"
             )
             print(f"   EXPECTED VALUE (EV): +{bet['ev_percent']}%")
             print(
@@ -297,33 +319,33 @@ def analyze_evs(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Berechnet positive EVs fuer diverse Sportarten."
+        description="Calculate positive EVs for various sports."
     )
     parser.add_argument(
         "limit",
         type=int,
         nargs="?",
         default=None,
-        help="Anzahl der anzuzeigenden Top-Wetten (z.B. 10 fuer Top 10)",
+        help="Number of top bets to display (e.g. 10 for Top 10)",
     )
     parser.add_argument(
         "--sport",
         type=str,
         default="football",
         choices=list(SPORTS_CONFIG.keys()),
-        help="Die zu analysierende Sportart (Standard: football)",
+        help="The sport to analyze (Default: football)",
     )
     parser.add_argument(
         "--data-file",
         type=str,
         default=None,
-        help="Pfad zu einer CSV-Datei mit Spieldaten (anstatt API-Aufruf)",
+        help="Path to a CSV file with match data (instead of API call)",
     )
     parser.add_argument(
         "--kelly-fraction",
         type=float,
         default=0.25,
-        help="Fraktion fuer Kelly Criterion (Standard: 0.25)",
+        help="Fraction for Kelly Criterion (Default: 0.25)",
     )
     args = parser.parse_args()
     analyze_evs(args.sport, args.limit, args.data_file, args.kelly_fraction)

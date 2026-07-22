@@ -1,7 +1,7 @@
 """
 export_winamax_odds.py
 ======================
-Skript zum Abrufen von Winamax-Quoten fuer beliebige Sportarten und Speichern als JSON-Datei.
+Script to fetch Winamax odds for any sport and save as a JSON file.
 """
 
 import argparse
@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 def match_to_dict(m: Match) -> dict:
-    """Konvertiert ein Match-Objekt in ein serialisierbares Dictionary."""
+    """
+    Convert a Match object to a serializable dictionary.
+
+    :param m: The Match object to convert.
+    :return: A dictionary representation of the match.
+    """
     match_dict = {
         "match_id": m.match_id,
         "title": m.title,
@@ -45,31 +50,42 @@ def match_to_dict(m: Match) -> dict:
     return match_dict
 
 
-def get_matches_for_sport(sport_name: str) -> list:
-    """Lädt alle Matches für die angegebene Sportart."""
+def get_matches_for_sport(sport_name: str) -> list[Match]:
+    """
+    Load all matches for the specified sport.
+
+    :param sport_name: The name of the sport to fetch.
+    :return: A list of Match objects.
+    :raises ValueError: If the sport name is invalid.
+    """
     sport_name_lower = sport_name.lower()
     if sport_name_lower not in SPORT_IDS:
         raise ValueError(
-            f"Ungueltige Sportart '{sport_name}'. Waehle aus: {list(SPORT_IDS.keys())}"
+            f"Invalid sport '{sport_name}'. Choose from: {list(SPORT_IDS.keys())}"
         )
 
     sport_id = SPORT_IDS[sport_name_lower]
     url = f"{BASE_URL}/{sport_id}"
 
     with requests.Session() as session:
-        logger.info(f"Lade Winamax-Seite fuer {sport_name} (ID: {sport_id}): {url}")
+        logger.info("Loading Winamax page for %s (ID: %d): %s", sport_name, sport_id, url)
         state = fetch_winamax_page(url, session)
         matches = parse_matches(state)
-        # Filtern, um nur Matches der gewählten Sportart (ohne Langzeit-/Saisonwetten) zu behalten
+        # Filter to keep only matches of the chosen sport (excluding outrights/seasonal bets)
         filtered_matches = [
             m for m in matches if m.sport_id == sport_id and not m.is_outright
         ]
-        logger.info(f"Gefunden: {len(filtered_matches)} Spiele (nach Filterung)")
+        logger.info("Found: %d matches (after filtering)", len(filtered_matches))
         return filtered_matches
 
 
-def export_odds_to_json(sport: str, output_path: str = None):
-    """Ruft die Matches der gewünschten Sportart ab und speichert sie."""
+def export_odds_to_json(sport: str, output_path: str = None) -> None:
+    """
+    Fetch matches for the desired sport and save them.
+
+    :param sport: The name of the sport.
+    :param output_path: Optional path to the destination JSON file.
+    """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
@@ -93,27 +109,27 @@ def export_odds_to_json(sport: str, output_path: str = None):
             json.dump(export_data, f, ensure_ascii=False, indent=2)
 
         print(
-            f"\n[ERFOLG] {len(matches)} Quoten für {sport.capitalize()} wurden exportiert nach: {output_path}"
+            f"\n[SUCCESS] {len(matches)} odds for {sport.capitalize()} were exported to: {output_path}"
         )
 
     except Exception:
-        logger.exception("Fehler beim Exportieren der Quoten")
+        logger.exception("Error exporting odds")
         raise
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Winamax Quoten Scraper & Exporter")
+    parser = argparse.ArgumentParser(description="Winamax odds scraper & exporter")
     parser.add_argument(
         "sport",
         type=str,
         nargs="?",
         default="football",
-        help=f"Die gewünschte Sportart. Optionen: {', '.join(SPORT_IDS.keys())} (Standard: football)",
+        help=f"The desired sport. Options: {', '.join(SPORT_IDS.keys())} (Default: football)",
     )
     parser.add_argument(
         "--output",
         type=str,
-        help="Pfad zur Ausgabedatei (Standard: winamax_<sport>_odds.json)",
+        help="Path to the output file (Default: winamax_<sport>_odds.json)",
     )
 
     args = parser.parse_args()
