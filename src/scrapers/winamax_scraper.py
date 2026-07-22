@@ -104,20 +104,9 @@ def _extract_preloaded_state(html: str) -> dict:
         raise ValueError("PRELOADED_STATE nicht im HTML gefunden.")
     start_idx += len(marker)
 
-    # Balancierte Klammern zaehlen, um das Ende des JSON zu finden
-    depth = 0
-    end_idx = start_idx
-    for i, ch in enumerate(html[start_idx:], start_idx):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                end_idx = i + 1
-                break
-
-    raw_json = html[start_idx:end_idx]
-    return json.loads(raw_json)
+    payload = html[start_idx:].lstrip()
+    state, _ = json.JSONDecoder().raw_decode(payload)
+    return state
 
 
 def fetch_winamax_page(url: str, session: requests.Session) -> dict:
