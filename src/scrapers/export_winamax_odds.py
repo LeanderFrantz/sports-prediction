@@ -96,8 +96,9 @@ def export_odds_to_json(sport: str, output_path: str = None):
             f"\n[ERFOLG] {len(matches)} Quoten für {sport.capitalize()} wurden exportiert nach: {output_path}"
         )
 
-    except Exception as e:
-        logger.error(f"Fehler beim Exportieren der Quoten: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Fehler beim Exportieren der Quoten")
+        raise
 
 
 if __name__ == "__main__":
