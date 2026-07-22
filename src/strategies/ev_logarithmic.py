@@ -94,7 +94,18 @@ def analyze_evs(
         logger.info(f"Lade Quoten aus Datei: {data_file}...")
         odds_data = load_odds_from_csv(data_file)
     else:
-        odds_data = fetch_odds_for_sport(sport)
+        result = fetch_odds_for_sport(sport)
+        odds_data = result["data"]
+        errors = result["errors"]
+        
+        if errors:
+            for err in errors:
+                logger.warning(f"Fehler bei Liga {err['league']}: {err['error']}")
+        
+        if not odds_data:
+            logger.error(f"Keine Daten für {sport} abrufbar.")
+            return
+
         # Automatisches Speichern, falls keine Datei angegeben wurde
         if not data_file:
             save_odds_to_csv(odds_data, f"data/{sport.lower()}_odds_data.csv")

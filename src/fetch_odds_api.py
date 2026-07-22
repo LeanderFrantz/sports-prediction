@@ -91,9 +91,10 @@ def get_odds_from_api(
     return response.json()
 
 
-def fetch_odds_for_sport(sport_name: str) -> list:
-    """Holt die Quoten fuer alle konfigurierten Ligen einer Sportart."""
+def fetch_odds_for_sport(sport_name: str) -> dict:
+    """Holt die Quoten fuer alle konfigurierten Ligen einer Sportart und gibt Erfolge sowie Fehler zurueck."""
     all_data = []
+    errors = []
     regions = "eu,uk,us,au"
 
     league_keys = SPORTS_CONFIG.get(sport_name.lower())
@@ -103,11 +104,11 @@ def fetch_odds_for_sport(sport_name: str) -> list:
     for league in league_keys:
         try:
             logger.info(f"Lade Quoten fuer {league}...")
-            data = get_odds_from_api(
-                sport_key=league, regions=regions, markets="h2h", bookmakers=None
-            )
+            data = get_odds_from_api(sport_key=league, regions=regions, markets="h2h", bookmakers=None)
             all_data.extend(data)
         except Exception as e:
             logger.error(f"Fehler beim Laden von {league}: {e}")
+            errors.append({"league": league, "error": str(e)})
 
-    return all_data
+    return {"data": all_data, "errors": errors}
+
