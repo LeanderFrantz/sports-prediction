@@ -62,22 +62,26 @@ def save_odds_to_csv(odds_data: list, file_path: str):
     # Konvertierung der Daten in ein flaches Format für die CSV
     rows = []
     for match in odds_data:
-        rows.append({
-            "id": match["id"],
-            "sport_key": match["sport_key"],
-            "sport_title": match["sport_title"],
-            "commence_time": match["commence_time"],
-            "home_team": match["home_team"],
-            "away_team": match["away_team"],
-            "bookmakers": str(match["bookmakers"]),
-        })
-    
+        rows.append(
+            {
+                "id": match["id"],
+                "sport_key": match["sport_key"],
+                "sport_title": match["sport_title"],
+                "commence_time": match["commence_time"],
+                "home_team": match["home_team"],
+                "away_team": match["away_team"],
+                "bookmakers": str(match["bookmakers"]),
+            }
+        )
+
     df = pd.DataFrame(rows)
     df.to_csv(file_path, index=False)
     logger.info(f"Quoten erfolgreich in {file_path} gespeichert.")
 
 
-def analyze_evs(sport: str, limit: int = None, data_file: str = None, kelly_fraction: float = 0.25):
+def analyze_evs(
+    sport: str, limit: int = None, data_file: str = None, kelly_fraction: float = 0.25
+):
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
@@ -90,7 +94,6 @@ def analyze_evs(sport: str, limit: int = None, data_file: str = None, kelly_frac
         # Automatisches Speichern, falls keine Datei angegeben wurde
         if not data_file:
             save_odds_to_csv(odds_data, f"data/{sport.lower()}_odds_data.csv")
-
 
     logger.info(
         f"Insgesamt {len(odds_data)} {sport.capitalize()}-Spiele geladen. Starte EV-Berechnung..."
@@ -110,7 +113,9 @@ def analyze_evs(sport: str, limit: int = None, data_file: str = None, kelly_frac
         for bm in match.get("bookmakers", []):
             if bm.get("key") == "pinnacle":
                 # Finde das h2h-Market explizit
-                h2h_market = next((m for m in bm.get("markets", []) if m.get("key") == "h2h"), None)
+                h2h_market = next(
+                    (m for m in bm.get("markets", []) if m.get("key") == "h2h"), None
+                )
                 if not h2h_market:
                     continue
 
@@ -173,7 +178,9 @@ def analyze_evs(sport: str, limit: int = None, data_file: str = None, kelly_frac
                 continue
 
             # Finde das h2h-Market explizit
-            h2h_market = next((m for m in bm.get("markets", []) if m.get("key") == "h2h"), None)
+            h2h_market = next(
+                (m for m in bm.get("markets", []) if m.get("key") == "h2h"), None
+            )
             if not h2h_market:
                 continue
 
@@ -267,7 +274,9 @@ def analyze_evs(sport: str, limit: int = None, data_file: str = None, kelly_frac
                 f"   Buchmacher: {bet['bookmaker']} | Quote: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']})"
             )
             print(f"   EXPECTED VALUE (EV): +{bet['ev_percent']}%")
-            print(f"   Suggested fractional ({int(kelly_fraction*100)}%) Kelly: +{bet['kelly_suggested']}%")
+            print(
+                f"   Suggested fractional ({int(kelly_fraction * 100)}%) Kelly: +{bet['kelly_suggested']}%"
+            )
             print("-" * 80)
 
 
@@ -304,6 +313,6 @@ def main():
     args = parser.parse_args()
     analyze_evs(args.sport, args.limit, args.data_file, args.kelly_fraction)
 
+
 if __name__ == "__main__":
     main()
-
