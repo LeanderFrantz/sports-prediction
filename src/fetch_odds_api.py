@@ -73,7 +73,10 @@ def get_odds_from_api(
     if bookmakers:
         params["bookmakers"] = bookmakers
 
-    logger.info(f"Rufe Quoten ab von URL: {url} mit Params: {params}")
+    logger.info(
+        "Rufe Quoten ab von URL: %s mit regions=%s, markets=%s, bookmakers=%s",
+        url, regions, markets, bookmakers,
+    )
     response = requests.get(url, params=params, timeout=20)
 
     # Header zur Überprüfung verbleibender Requests ausgeben
