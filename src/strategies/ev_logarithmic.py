@@ -277,7 +277,7 @@ def analyze_evs(
             )
             print(f"   EXPECTED VALUE (EV): +{bet['ev_percent']}%")
             print(
-                f"   Suggested fractional ({int(kelly_fraction * 100)}%) Kelly: +{bet['kelly_suggested']}%"
+                f"   Suggested fractional ({kelly_fraction:.2%}) Kelly: +{bet['kelly_suggested']}%"
             )
             print("-" * 80)
 
