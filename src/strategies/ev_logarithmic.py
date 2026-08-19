@@ -1,48 +1,29 @@
+"""
+ev_logarithmic.py
+==================
+CLI entry point for EV analysis. Fetches (or loads) odds, prints the
+positive-EV bets to stdout, and auto-saves fetched odds to CSV.
+
+The actual matching/EV/Kelly logic lives in ev_core.py and is shared with
+ev_service.py (the Lambda / Telegram path).
+"""
+
 import argparse
 import logging
-import math
 import ast
+
 import pandas as pd
+from dotenv import load_dotenv
+
+# Load ODDS_API_KEY / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS from .env before
+# the project modules below read them from the environment.
+load_dotenv()
 
 from ..fetch_odds_api import SPORTS_CONFIG, fetch_odds_for_sport
+from ..telegram_notifier import TelegramNotifier
+from .ev_core import find_positive_ev_bets
 
 logger = logging.getLogger(__name__)
-
-
-def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], list[float]]:
-    """
-    Calculate fair probabilities based on Pinnacle odds using the Logarithmic Function Model.
-
-    Supports both 2-outcome (e.g., Tennis, Basketball) and 3-outcome (e.g., Football) bets.
-    Finds k (1/n) such that sum(p_i ^ k) = 1.0.
-
-    :param odds_bookmaker: A list of decimal odds from the bookmaker.
-    :return: A tuple containing fair odds and fair probabilities.
-    :raises ValueError: If any odds are <= 1.0.
-    """
-    if any(o <= 1.0 for o in odds_bookmaker):
-        raise ValueError(f"All odds must be > 1.0, got: {odds_bookmaker}")
-    probs = [1.0 / float(o) for o in odds_bookmaker]
-
-    low = 1.0
-    high = 20.0
-
-    # Expand boundaries if needed
-    while sum(p**high for p in probs) > 1.0:
-        high *= 2.0
-
-    for _ in range(100):
-        mid = (low + high) / 2.0
-        s = sum(p**mid for p in probs)
-        if s > 1.0:
-            low = mid
-        else:
-            high = mid
-
-    k_val = (low + high) / 2.0
-    true_probs = [p**k_val for p in probs]
-    true_odds = [1.0 / tp for tp in true_probs]
-    return true_odds, true_probs
 
 
 def load_odds_from_csv(file_path: str) -> list[dict]:
@@ -96,18 +77,22 @@ def save_odds_to_csv(odds_data: list[dict], file_path: str) -> None:
 
 
 def analyze_evs(
-    sport: str, limit: int = None, data_file: str = None, kelly_fraction: float = 0.25
+    sport: str,
+    limit: int = None,
+    data_file: str = None,
+    kelly_fraction: float = 0.25,
+    telegram: bool = False,
 ) -> None:
     """
-    Analyze expected value (EV) for a given sport or data file.
+    Analyze expected value (EV) for a given sport or data file and print results.
 
     :param sport: The sport identifier to fetch and analyze.
     :param limit: Maximum number of positive EV bets to display.
     :param data_file: Optional path to a CSV file to skip API fetching.
     :param kelly_fraction: The fractional Kelly multiplier to use.
+    :param telegram: If True, also send the displayed bets to Telegram
+                      (requires TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS).
     """
-    if not math.isfinite(kelly_fraction) or not 0 <= kelly_fraction <= 1:
-        raise ValueError("kelly_fraction must be finite and between 0 and 1")
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
@@ -119,180 +104,23 @@ def analyze_evs(
         result = fetch_odds_for_sport(sport)
         odds_data = result["data"]
         errors = result["errors"]
-        
+
         if errors:
             for err in errors:
                 logger.warning(f"Error in league {err['league']}: {err['error']}")
-        
+
         if not odds_data:
             logger.error(f"No data available for {sport}.")
             return
 
         # Auto-save if no file was specified
-        if not data_file:
-            save_odds_to_csv(odds_data, f"data/{sport.lower()}_odds_data.csv")
+        save_odds_to_csv(odds_data, f"data/{sport.lower()}_odds_data.csv")
 
     logger.info(
         f"Loaded {len(odds_data)} {sport.capitalize()} matches in total. Starting EV calculation..."
     )
 
-    positive_ev_bets = []
-
-    for match in odds_data:
-        home_team = match.get("home_team")
-        away_team = match.get("away_team")
-        sport_title = match.get("sport_title")
-
-        # 1) Find Pinnacle odds
-        pinnacle_odds = None
-        outcomes_order = []  # Order of teams for the match
-
-        for bm in match.get("bookmakers", []):
-            if bm.get("key") == "pinnacle":
-                # Explicitly find h2h market
-                h2h_market = next(
-                    (m for m in bm.get("markets", []) if m.get("key") == "h2h"), None
-                )
-                if not h2h_market:
-                    continue
-
-                outcomes = h2h_market.get("outcomes", [])
-
-                # Build odds dynamically based on number of outcomes (2 or 3)
-                odds_dict = {oc["name"]: oc["price"] for oc in outcomes}
-
-                # Search for Draw key
-                draw_key = next(
-                    (
-                        k
-                        for k in odds_dict.keys()
-                        if "draw" in k.lower()
-                        or k.lower() == "draw"
-                        or k.lower() == "match nul"
-                    ),
-                    None,
-                )
-
-                # Determine order
-                if draw_key:
-                    # 3 Outcomes: Home, Draw, Away
-                    if home_team in odds_dict and away_team in odds_dict:
-                        pinnacle_odds = [
-                            odds_dict[home_team],
-                            odds_dict[draw_key],
-                            odds_dict[away_team],
-                        ]
-                        outcomes_order = [home_team, "Draw", away_team]
-                        labels = ["Home (1)", "Draw (X)", "Away (2)"]
-                else:
-                    # 2 Outcomes: Home, Away
-                    if home_team in odds_dict and away_team in odds_dict:
-                        pinnacle_odds = [odds_dict[home_team], odds_dict[away_team]]
-                        outcomes_order = [home_team, away_team]
-                        labels = ["Home (1)", "Away (2)"]
-                break
-
-        if not pinnacle_odds:
-            continue
-
-        # 2) Calculate Fair Odds using Logarithmic Function Model
-        try:
-            fair_odds, fair_probs = solve_logarithmic_pure(pinnacle_odds)
-        except Exception as e:
-            logger.error(
-                f"Error calculating EV for {home_team} - {away_team}: {e}"
-            )
-            continue
-
-        # 3) Compare with all other bookmakers
-        seen_bets = set()
-        # Excluded exchange keys
-        excluded_keys = {"h2h_lay", "betfair_ex_uk", "betfair_ex_eu", "betfair_ex_au"}
-
-        for bm in match.get("bookmakers", []):
-            bm_key = bm.get("key")
-            if bm_key == "pinnacle" or bm_key in excluded_keys:
-                continue
-
-            # Explicitly find h2h market
-            h2h_market = next(
-                (m for m in bm.get("markets", []) if m.get("key") == "h2h"), None
-            )
-            if not h2h_market:
-                continue
-
-            outcomes = h2h_market.get("outcomes", [])
-            odds_dict = {oc["name"]: oc["price"] for oc in outcomes}
-
-            # Does this bookie have all odds for our outcomes?
-            bookie_odds = []
-            valid = True
-            for name in outcomes_order:
-                # Flexible matching for Draw
-                if name == "Draw":
-                    draw_key = next(
-                        (
-                            k
-                            for k in odds_dict.keys()
-                            if "draw" in k.lower()
-                            or k.lower() == "draw"
-                            or k.lower() == "match nul"
-                        ),
-                        None,
-                    )
-                    if draw_key:
-                        bookie_odds.append(odds_dict[draw_key])
-                    else:
-                        valid = False
-                elif name in odds_dict:
-                    bookie_odds.append(odds_dict[name])
-                else:
-                    valid = False
-
-            if not valid or len(bookie_odds) != len(pinnacle_odds):
-                continue
-
-            # Calculate EV for each outcome
-            for i in range(len(pinnacle_odds)):
-                b_odd = bookie_odds[i]
-                f_prob = fair_probs[i]
-                f_odd = fair_odds[i]
-
-                ev = (f_prob * b_odd) - 1.0
-
-                if ev > 0.0:  # Positive EV!
-                    # Deduplication logic: Identify bet uniquely
-                    bet_key = (f"{home_team} - {away_team}", outcomes_order[i], b_odd)
-                    if bet_key in seen_bets:
-                        continue
-                    seen_bets.add(bet_key)
-
-                    # Kelly Criterion
-                    # b = odds - 1 (net profit)
-                    # p = fair_prob
-                    # q = 1 - p (loss probability)
-                    # Kelly = (p * b - q) / b
-                    b = b_odd - 1
-                    kelly = (f_prob * b - (1 - f_prob)) / b
-                    kelly_frac = kelly * kelly_fraction * 100
-
-                    positive_ev_bets.append(
-                        {
-                            "league": sport_title,
-                            "match": f"{home_team} - {away_team}",
-                            "outcome": outcomes_order[i],
-                            "type": labels[i],
-                            "bookmaker": bm.get("title"),
-                            "bookmaker_key": bm_key,
-                            "bookmaker_odds": b_odd,
-                            "fair_odds": round(f_odd, 2),
-                            "ev_percent": round(ev * 100, 2),
-                            "kelly_suggested": round(max(0.0, kelly_frac), 2),
-                        }
-                    )
-
-    # Sortiere nach hoechstem EV
-    positive_ev_bets.sort(key=lambda x: x["ev_percent"], reverse=True)
+    positive_ev_bets = find_positive_ev_bets(odds_data, kelly_fraction=kelly_fraction)
 
     # Limit anwenden
     display_bets = positive_ev_bets[:limit] if limit is not None else positive_ev_bets
@@ -315,6 +143,19 @@ def analyze_evs(
                 f"   Suggested fractional ({kelly_fraction:.2%}) Kelly: +{bet['kelly_suggested']}%"
             )
             print("-" * 80)
+
+    if telegram:
+        try:
+            notifier = TelegramNotifier()
+            notifier.notify_bets(
+                bets=display_bets,
+                threshold=0.0,
+                sports=[sport],
+                kelly_fraction=kelly_fraction,
+            )
+            logger.info("Sent %d bet(s) to Telegram.", len(display_bets))
+        except Exception as e:
+            logger.error("Failed to send Telegram notification: %s", e)
 
 
 def main():
@@ -347,8 +188,14 @@ def main():
         default=0.25,
         help="Fraction for Kelly Criterion (Default: 0.25)",
     )
+    parser.add_argument(
+        "--telegram",
+        action="store_true",
+        help="Also send the displayed bets to Telegram (default: off; "
+        "requires TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS in .env)",
+    )
     args = parser.parse_args()
-    analyze_evs(args.sport, args.limit, args.data_file, args.kelly_fraction)
+    analyze_evs(args.sport, args.limit, args.data_file, args.kelly_fraction, args.telegram)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 import pytest
-from src.strategies.ev_logarithmic import solve_logarithmic_pure
+from src.strategies.ev_core import solve_logarithmic_pure
 
 
 def test_solve_logarithmic_pure_fair_odds():
