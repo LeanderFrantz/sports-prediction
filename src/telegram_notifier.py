@@ -61,9 +61,7 @@ class TelegramNotifier:
     # Low-level sending
     # ------------------------------------------------------------------
 
-    def _send_to_chat(
-        self, chat_id: str, text: str, parse_mode: str = "HTML"
-    ) -> dict:
+    def _send_to_chat(self, chat_id: str, text: str, parse_mode: str = "HTML") -> dict:
         """
         Send a single text message to one chat.
 
@@ -89,7 +87,9 @@ class TelegramNotifier:
             logger.error("Telegram API error for chat %s: %s", chat_id, result)
         return result
 
-    def send_message(self, text: str, parse_mode: str = "HTML") -> dict[str, list[dict]]:
+    def send_message(
+        self, text: str, parse_mode: str = "HTML"
+    ) -> dict[str, list[dict]]:
         """
         Send a single text message to all configured chats.
 
@@ -274,8 +274,18 @@ def _sport_emoji(league_name: str) -> str:
     if any(
         kw in name
         for kw in (
-            "soccer", "football", "bundesliga", "premier", "liga", "serie",
-            "ligue", "efl", "mls", "eredivisie", "dfb", "uefa",
+            "soccer",
+            "football",
+            "bundesliga",
+            "premier",
+            "liga",
+            "serie",
+            "ligue",
+            "efl",
+            "mls",
+            "eredivisie",
+            "dfb",
+            "uefa",
         )
     ):
         return "⚽"
