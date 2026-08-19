@@ -1,6 +1,7 @@
 config.json
 docs
 .env
+CLAUDE.md
 build/
 function.zip
 __pycache__/
