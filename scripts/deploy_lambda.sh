@@ -145,6 +145,11 @@ aws events put-targets \
   --rule "$RULE_NAME" \
   --targets "Id=1,Arn=$FUNCTION_ARN" >/dev/null
 
+# --- 6) Clean up local build artifacts ---
+# The zip is already uploaded to Lambda; no need to keep the local copy or
+# the extracted build/ directory around between runs.
+rm -rf "$BUILD_DIR" "$ZIP_FILE"
+
 echo "==> Done."
 echo "    Function:  $FUNCTION_ARN"
 echo "    Schedule:  $SCHEDULE_EXPRESSION ($RULE_NAME)"
