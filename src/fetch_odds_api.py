@@ -6,22 +6,11 @@ Script to fetch odds for Pinnacle and Winamax via The Odds API.
 
 import logging
 import requests
-import json
 import os
 
 logger = logging.getLogger(__name__)
 
-# Load configuration
-config_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json"
-)
-try:
-    with open(config_path, "r") as f:
-        config = json.load(f)
-        API_KEY = config.get("api_key")
-except FileNotFoundError:
-    logger.error(f"Configuration file not found: {config_path}")
-    API_KEY = None
+API_KEY = os.environ.get("ODDS_API_KEY")
 
 BASE_URL = "https://api.the-odds-api.com/v4/sports"
 
