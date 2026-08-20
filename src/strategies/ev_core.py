@@ -110,6 +110,7 @@ def find_positive_ev_bets(
     odds_data: list[dict],
     kelly_fraction: float = 0.25,
     ev_threshold: float = 0.0,
+    max_fair_odds: float | None = None,
 ) -> list[dict]:
     """
     Compare every bookmaker's odds against Pinnacle-derived fair probabilities
@@ -122,6 +123,10 @@ def find_positive_ev_bets(
                        or loaded from a saved CSV.
     :param kelly_fraction: Fractional Kelly multiplier (0-1).
     :param ev_threshold: Minimum EV% to include in results.
+    :param max_fair_odds: If set, skip outcomes whose Pinnacle-derived fair
+                           odds are >= this value. Longshots (high fair odds)
+                           were found in backtesting to underperform their
+                           theoretical EV — see notebooks/backtest_ev_strategy.ipynb.
     :raises ValueError: If kelly_fraction is out of range.
     :return: List of bet dicts sorted by ev_percent descending.
     """
@@ -144,6 +149,16 @@ def find_positive_ev_bets(
         except Exception as e:
             logger.error("Error calculating EV for %s - %s: %s", home_team, away_team, e)
             continue
+
+        if max_fair_odds is not None:
+            outcomes_order = [o for o, fo in zip(outcomes_order, fair_odds) if fo < max_fair_odds]
+            labels = [lbl for lbl, fo in zip(labels, fair_odds) if fo < max_fair_odds]
+            keep_idx = [i for i, fo in enumerate(fair_odds) if fo < max_fair_odds]
+            pinnacle_odds = [pinnacle_odds[i] for i in keep_idx]
+            fair_odds = [fair_odds[i] for i in keep_idx]
+            fair_probs = [fair_probs[i] for i in keep_idx]
+            if not pinnacle_odds:
+                continue
 
         seen_bets: set[tuple] = set()
 

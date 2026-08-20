@@ -48,6 +48,7 @@ EV_THRESHOLD="${EV_THRESHOLD:-1.0}"
 SPORTS="${SPORTS:-football}"
 KELLY_FRACTION="${KELLY_FRACTION:-0.25}"
 MAX_BETS="${MAX_BETS:-25}"
+MAX_FAIR_ODDS="${MAX_FAIR_ODDS:-5.0}"
 
 # --- 1) Build the deployment zip ---
 # Only `requests` is needed at runtime — pandas/python-dotenv/pytest are
@@ -85,7 +86,7 @@ else
 fi
 ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)
 
-ENV_VARS="Variables={ODDS_API_KEY=$ODDS_API_KEY,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_IDS=$TELEGRAM_CHAT_IDS,EV_THRESHOLD=$EV_THRESHOLD,SPORTS=$SPORTS,KELLY_FRACTION=$KELLY_FRACTION,MAX_BETS=$MAX_BETS}"
+ENV_VARS="Variables={ODDS_API_KEY=$ODDS_API_KEY,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_IDS=$TELEGRAM_CHAT_IDS,EV_THRESHOLD=$EV_THRESHOLD,SPORTS=$SPORTS,KELLY_FRACTION=$KELLY_FRACTION,MAX_BETS=$MAX_BETS,MAX_FAIR_ODDS=$MAX_FAIR_ODDS}"
 
 # --- 3) Create or update the Lambda function ---
 echo "==> Deploying Lambda function..."
