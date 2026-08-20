@@ -159,7 +159,7 @@ class TelegramNotifier:
             f"<b>{bet['match']}</b>\n"
             f"Tip: {bet['outcome']} ({bet['type']})\n"
             f"📊 Bookmaker: {bet['bookmaker']} | "
-            f"Odds: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']})\n"
+            f"Odds: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']}, Pinnacle: {bet['pinnacle_odds']})\n"
             f"📈 EV: <b>+{bet['ev_percent']}%</b>\n"
             f"💰 Kelly ({kelly_fraction:.0%}): {bet['kelly_suggested']}%"
         )

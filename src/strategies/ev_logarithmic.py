@@ -136,7 +136,8 @@ def analyze_evs(
             print(f"{idx}. [{bet['league']}] {bet['match']}")
             print(f"   Tip: {bet['outcome']} ({bet['type']})")
             print(
-                f"   Bookmaker: {bet['bookmaker']} | Odds: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']})"
+                f"   Bookmaker: {bet['bookmaker']} | Odds: {bet['bookmaker_odds']} "
+                f"(Fair: {bet['fair_odds']}, Pinnacle: {bet['pinnacle_odds']})"
             )
             print(f"   EXPECTED VALUE (EV): +{bet['ev_percent']}%")
             print(

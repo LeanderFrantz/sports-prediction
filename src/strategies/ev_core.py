@@ -224,6 +224,7 @@ def find_positive_ev_bets(
                         "bookmaker": bm.get("title"),
                         "bookmaker_key": bm_key,
                         "bookmaker_odds": b_odd,
+                        "pinnacle_odds": round(pinnacle_odds[i], 2),
                         "fair_odds": round(f_odd, 2),
                         "ev_percent": ev_percent,
                         "kelly_suggested": round(max(0.0, kelly_frac), 2),
