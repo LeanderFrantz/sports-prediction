@@ -133,6 +133,8 @@ def analyze_evs(
         print(" No bets with positive EV found.")
     else:
         for idx, bet in enumerate(display_bets, 1):
+            if bet.get("kickoff"):
+                print(f"   📅 {bet['kickoff']}")
             print(f"{idx}. [{bet['league']}] {bet['match']}")
             print(f"   Tip: {bet['outcome']} ({bet['type']})")
             print(

@@ -152,10 +152,13 @@ class TelegramNotifier:
         """
         league = bet.get("league", "")
         emoji = _sport_emoji(league)
+        kickoff = bet.get("kickoff")
+        kickoff_line = f"📅 {kickoff}\n" if kickoff else ""
 
         return (
             f"🎯 <b>Positive EV Bet #{index}</b>\n"
             f"{emoji} {league}\n"
+            f"{kickoff_line}"
             f"<b>{bet['match']}</b>\n"
             f"Tip: {bet['outcome']} ({bet['type']})\n"
             f"📊 Bookmaker: {bet['bookmaker']} | "

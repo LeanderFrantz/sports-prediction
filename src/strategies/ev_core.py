@@ -9,11 +9,26 @@ so both entry points stay in sync by construction.
 
 import logging
 import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 # Exchange-style keys we don't treat as fixed-odds bookmakers to compare against.
 EXCLUDED_BOOKMAKER_KEYS = {"h2h_lay", "betfair_ex_uk", "betfair_ex_eu", "betfair_ex_au"}
+
+
+def _format_kickoff(commence_time: str | None) -> str | None:
+    """Format an ISO 8601 UTC commence_time (as returned by The Odds API) as a
+    readable Europe/Berlin local time string, e.g. 'Fri, 28 Aug 18:30'."""
+    if not commence_time:
+        return None
+    try:
+        dt_utc = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
+        dt_local = dt_utc.astimezone(ZoneInfo("Europe/Berlin"))
+        return dt_local.strftime("%a, %d %b %H:%M")
+    except (ValueError, TypeError):
+        return None
 
 
 def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], list[float]]:
@@ -139,6 +154,7 @@ def find_positive_ev_bets(
         home_team = match.get("home_team")
         away_team = match.get("away_team")
         sport_title = match.get("sport_title")
+        kickoff = _format_kickoff(match.get("commence_time"))
 
         pinnacle_odds, outcomes_order, labels = _find_pinnacle_odds(match)
         if not pinnacle_odds:
@@ -219,6 +235,7 @@ def find_positive_ev_bets(
                     {
                         "league": sport_title,
                         "match": f"{home_team} - {away_team}",
+                        "kickoff": kickoff,
                         "outcome": outcomes_order[i],
                         "type": labels[i],
                         "bookmaker": bm.get("title"),
