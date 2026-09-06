@@ -1,5 +1,5 @@
 import pytest
-from src.strategies.ev_core import solve_logarithmic_pure
+from src.strategies.ev_core import find_positive_ev_bets, solve_logarithmic_pure
 
 
 def test_solve_logarithmic_pure_fair_odds():
@@ -21,3 +21,67 @@ def test_solve_logarithmic_pure_3_outcomes():
 
     # Probs should sum to 1.0
     assert sum(true_probs) == pytest.approx(1.0, abs=1e-5)
+
+
+def test_solve_logarithmic_pure_zero_margin_is_accepted():
+    # A perfectly fair book (implied probs sum to exactly 1.0) needs no
+    # de-vigging and must pass through unchanged.
+    true_odds, true_probs = solve_logarithmic_pure([2.0, 2.0])
+
+    assert sum(true_probs) == pytest.approx(1.0, abs=1e-9)
+    assert true_odds == pytest.approx([2.0, 2.0], abs=1e-9)
+
+
+def test_solve_logarithmic_pure_rejects_negative_margin():
+    # Implied probs sum to 0.909 — the model can only remove vig (k >= 1), so
+    # there is no k that normalises this. It used to return the raw
+    # probabilities unchanged, inflating every downstream EV.
+    with pytest.raises(ValueError, match="sum to >= 1.0"):
+        solve_logarithmic_pure([2.2, 2.2])
+
+
+def test_solve_logarithmic_pure_rejects_invalid_odds():
+    with pytest.raises(ValueError):
+        solve_logarithmic_pure([])
+    with pytest.raises(ValueError):
+        solve_logarithmic_pure([1.0, 2.0])
+    with pytest.raises(ValueError):
+        solve_logarithmic_pure([float("inf"), 2.0])
+
+
+def test_find_positive_ev_bets_skips_match_with_unsolvable_pinnacle_line():
+    match = {
+        "home_team": "A",
+        "away_team": "B",
+        "sport_title": "Test League",
+        "bookmakers": [
+            {
+                "key": "pinnacle",
+                "title": "Pinnacle",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "A", "price": 2.2},
+                            {"name": "B", "price": 2.2},
+                        ],
+                    }
+                ],
+            },
+            {
+                "key": "bk1",
+                "title": "Book1",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "A", "price": 2.0},
+                            {"name": "B", "price": 2.0},
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+
+    assert find_positive_ev_bets([match]) == []

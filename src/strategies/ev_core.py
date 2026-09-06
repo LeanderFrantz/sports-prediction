@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 # Exchange-style keys we don't treat as fixed-odds bookmakers to compare against.
 EXCLUDED_BOOKMAKER_KEYS = {"h2h_lay", "betfair_ex_uk", "betfair_ex_eu", "betfair_ex_au"}
 
+# Slack allowed when checking that a set of probabilities sums to 1.0.
+_PROB_SUM_TOLERANCE = 1e-9
+
 
 def _format_kickoff(commence_time: str | None) -> str | None:
     """Format an ISO 8601 UTC commence_time (as returned by The Odds API) as a
@@ -40,11 +43,27 @@ def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], li
 
     :param odds_bookmaker: A list of decimal odds from the bookmaker.
     :return: A tuple containing fair odds and fair probabilities.
-    :raises ValueError: If any odds are <= 1.0.
+    :raises ValueError: If the odds are empty, not all finite and > 1.0, imply
+                        no bookmaker margin, or the solver fails to converge.
     """
-    if any(o <= 1.0 for o in odds_bookmaker):
-        raise ValueError(f"All odds must be > 1.0, got: {odds_bookmaker}")
+    if not odds_bookmaker:
+        raise ValueError("At least one outcome is required")
+    if any(not math.isfinite(float(o)) or float(o) <= 1.0 for o in odds_bookmaker):
+        raise ValueError(f"All odds must be finite and > 1.0, got: {odds_bookmaker}")
+
     probs = [1.0 / float(o) for o in odds_bookmaker]
+
+    # The search below is bracketed at k >= 1, i.e. it can only *remove* vig.
+    # If the implied probabilities already sum to less than 1 there is no vig
+    # to remove -- the line is stale, or the market is incomplete -- and the
+    # search would silently return the raw probabilities, inflating every
+    # downstream EV. Fail loudly instead; callers skip the match.
+    overround = sum(probs)
+    if overround < 1.0 - _PROB_SUM_TOLERANCE:
+        raise ValueError(
+            f"Implied probabilities must sum to >= 1.0 (no margin to remove), "
+            f"got {overround:.6f} for odds: {odds_bookmaker}"
+        )
 
     low = 1.0
     high = 20.0
@@ -63,6 +82,14 @@ def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], li
 
     k_val = (low + high) / 2.0
     true_probs = [p**k_val for p in probs]
+
+    total = sum(true_probs)
+    if abs(total - 1.0) > _PROB_SUM_TOLERANCE:
+        raise ValueError(
+            f"Solver did not converge: fair probabilities sum to {total:.9f} "
+            f"(k={k_val:.6f}) for odds: {odds_bookmaker}"
+        )
+
     true_odds = [1.0 / tp for tp in true_probs]
     return true_odds, true_probs
 
