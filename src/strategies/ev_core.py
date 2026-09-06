@@ -94,6 +94,27 @@ def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], li
     return true_odds, true_probs
 
 
+def _outcome_prices(market: dict) -> dict[str, float]:
+    """
+    Build an {outcome name: decimal price} dict from an h2h market.
+
+    Outcomes missing a name or a usable numeric price are skipped rather than
+    raising: a single malformed record from the API would otherwise abort the
+    whole scan, and callers already handle a market with missing outcomes.
+    """
+    prices: dict[str, float] = {}
+    for oc in market.get("outcomes", []):
+        name = oc.get("name")
+        price = oc.get("price")
+        if not name or price is None:
+            continue
+        try:
+            prices[name] = float(price)
+        except (TypeError, ValueError):
+            logger.warning("Skipping outcome %r with non-numeric price %r", name, price)
+    return prices
+
+
 def _find_draw_key(odds_dict: dict) -> str | None:
     """Find the draw outcome key in a bookmaker's odds dict, if present."""
     return next(
@@ -124,7 +145,7 @@ def _find_pinnacle_odds(match: dict) -> tuple[list[float] | None, list[str], lis
         if not h2h_market:
             continue
 
-        odds_dict = {oc["name"]: oc["price"] for oc in h2h_market.get("outcomes", [])}
+        odds_dict = _outcome_prices(h2h_market)
         draw_key = _find_draw_key(odds_dict)
 
         if draw_key:
@@ -183,11 +204,10 @@ def find_positive_ev_bets(
         sport_title = match.get("sport_title")
         kickoff = _format_kickoff(match.get("commence_time"))
 
-        pinnacle_odds, outcomes_order, labels = _find_pinnacle_odds(match)
-        if not pinnacle_odds:
-            continue
-
         try:
+            pinnacle_odds, outcomes_order, labels = _find_pinnacle_odds(match)
+            if not pinnacle_odds:
+                continue
             fair_odds, fair_probs = solve_logarithmic_pure(pinnacle_odds)
         except Exception as e:
             logger.error("Error calculating EV for %s - %s: %s", home_team, away_team, e)
@@ -214,7 +234,7 @@ def find_positive_ev_bets(
             if not h2h_market:
                 continue
 
-            odds_dict = {oc["name"]: oc["price"] for oc in h2h_market.get("outcomes", [])}
+            odds_dict = _outcome_prices(h2h_market)
 
             # Does this bookie have all odds for our outcomes?
             bookie_odds: list[float] = []

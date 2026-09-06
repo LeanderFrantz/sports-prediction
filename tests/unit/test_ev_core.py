@@ -85,3 +85,63 @@ def test_find_positive_ev_bets_skips_match_with_unsolvable_pinnacle_line():
     }
 
     assert find_positive_ev_bets([match]) == []
+
+
+def test_find_positive_ev_bets_skips_malformed_outcomes_without_crashing():
+    # An outcome missing "price" (and one with a junk price) used to raise
+    # KeyError/ValueError out of the whole scan, losing every other match.
+    broken = {
+        "home_team": "A",
+        "away_team": "B",
+        "sport_title": "Test League",
+        "bookmakers": [
+            {
+                "key": "pinnacle",
+                "title": "Pinnacle",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [{"name": "A"}, {"name": "B", "price": "n/a"}],
+                    }
+                ],
+            }
+        ],
+    }
+    healthy = {
+        "home_team": "C",
+        "away_team": "D",
+        "sport_title": "Test League",
+        "bookmakers": [
+            {
+                "key": "pinnacle",
+                "title": "Pinnacle",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "C", "price": 1.9},
+                            {"name": "D", "price": 1.9},
+                        ],
+                    }
+                ],
+            },
+            {
+                "key": "bk1",
+                "title": "Book1",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "C", "price": 2.1},
+                            {"name": "D", "price": 1.8},
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+
+    bets = find_positive_ev_bets([broken, healthy])
+
+    # The malformed match is skipped; the healthy one still comes through.
+    assert [b["match"] for b in bets] == ["C - D"]
