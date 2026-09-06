@@ -56,6 +56,7 @@ export PREFERRED_BOOKMAKERS="${PREFERRED_BOOKMAKERS:-}"
 # Both empty by default: the code falls back to DEFAULT_REGIONS.
 export ODDS_REGIONS="${ODDS_REGIONS:-}"
 export ODDS_BOOKMAKERS="${ODDS_BOOKMAKERS:-}"
+export DISPLAY_TIMEZONE="${DISPLAY_TIMEZONE:-}"
 
 # --- 1) Build the deployment zip ---
 # Only `requests` is needed at runtime — pandas/python-dotenv/pytest are
@@ -118,6 +119,7 @@ keys = [
     "PREFERRED_BOOKMAKERS",
     "ODDS_REGIONS",
     "ODDS_BOOKMAKERS",
+    "DISPLAY_TIMEZONE",
 ]
 with open(sys.argv[1], "w", encoding="utf-8") as fh:
     json.dump({"Variables": {k: os.environ[k] for k in keys}}, fh)

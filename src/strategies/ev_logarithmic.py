@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from ..fetch_odds_api import SPORTS_CONFIG, fetch_odds_for_sport
 from ..telegram_notifier import TelegramNotifier
 from .ev_core import (
+    DEFAULT_DISPLAY_TIMEZONE,
     DEFAULT_EV_THRESHOLD,
     DEFAULT_KELLY_FRACTION,
     DEFAULT_MAX_FAIR_ODDS,
@@ -125,6 +126,7 @@ def analyze_evs(
     preferred_bookmakers: list[str] | None = None,
     ev_threshold: float = DEFAULT_EV_THRESHOLD,
     max_fair_odds: float | None = DEFAULT_MAX_FAIR_ODDS,
+    display_timezone: str | None = None,
 ) -> None:
     """
     Analyze expected value (EV) for a given sport or data file and print results.
@@ -142,6 +144,8 @@ def analyze_evs(
                       Lambda applies, so the CLI shows what production sends.
     :param max_fair_odds: Skip outcomes with fair odds >= this. None disables
                       the cap.
+    :param display_timezone: IANA name for rendering kickoff times. None keeps
+                      the default.
     """
     if data_file:
         logger.info(f"Loading odds from file: {data_file}...")
@@ -175,6 +179,7 @@ def analyze_evs(
         max_fair_odds=max_fair_odds,
         skip_started=data_file is None,
         preferred_bookmakers=preferred_bookmakers,
+        display_timezone=display_timezone,
     )
 
     # Apply the display limit
@@ -278,6 +283,13 @@ def main():
         "are keys, not display titles. Default: PREFERRED_BOOKMAKER_KEYS",
     )
     parser.add_argument(
+        "--timezone",
+        type=str,
+        default=None,
+        help="IANA timezone for kickoff times, e.g. Europe/Berlin or UTC "
+        f"(Default: {DEFAULT_DISPLAY_TIMEZONE}). An unknown name falls back to UTC.",
+    )
+    parser.add_argument(
         "--telegram",
         action="store_true",
         help="Also send the displayed bets to Telegram (default: off; "
@@ -299,6 +311,7 @@ def main():
         args.ev_threshold,
         # 0 (or less) disables the cap rather than filtering everything out.
         args.max_fair_odds if args.max_fair_odds > 0 else None,
+        args.timezone,
     )
 
 

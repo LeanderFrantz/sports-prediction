@@ -23,6 +23,7 @@ def get_positive_ev_bets(
     ev_threshold: float = 0.0,
     max_fair_odds: float | None = None,
     preferred_bookmakers: list[str] | None = None,
+    display_timezone: str | None = None,
 ) -> list[dict]:
     """
     Fetch odds for a sport and return all positive-EV bets.
@@ -34,6 +35,8 @@ def get_positive_ev_bets(
                            odds >= this value (see ev_core.find_positive_ev_bets).
     :param preferred_bookmakers: Bookmaker keys to favour on a tie (see
                            ev_core.find_positive_ev_bets). None keeps the default.
+    :param display_timezone: IANA name for rendering kickoff times. None keeps
+                           the default.
     :return: List of bet dicts sorted by ev_percent descending.
     :raises ValueError: If kelly_fraction is out of range or sport is invalid.
     """
@@ -64,6 +67,7 @@ def get_positive_ev_bets(
         ev_threshold=ev_threshold,
         max_fair_odds=max_fair_odds,
         preferred_bookmakers=preferred_bookmakers,
+        display_timezone=display_timezone,
     )
 
     logger.info(
@@ -81,6 +85,7 @@ def get_all_positive_ev_bets(
     ev_threshold: float = 0.0,
     max_fair_odds: float | None = None,
     preferred_bookmakers: list[str] | None = None,
+    display_timezone: str | None = None,
 ) -> list[dict]:
     """
     Run EV analysis across multiple sports and return combined results.
@@ -92,6 +97,8 @@ def get_all_positive_ev_bets(
                            odds >= this value (see ev_core.find_positive_ev_bets).
     :param preferred_bookmakers: Bookmaker keys to favour on a tie (see
                            ev_core.find_positive_ev_bets). None keeps the default.
+    :param display_timezone: IANA name for rendering kickoff times. None keeps
+                           the default.
     :return: Combined list of bet dicts sorted by ev_percent descending.
     """
     if sports is None:
@@ -101,7 +108,12 @@ def get_all_positive_ev_bets(
     for sport in sports:
         try:
             bets = get_positive_ev_bets(
-                sport, kelly_fraction, ev_threshold, max_fair_odds, preferred_bookmakers
+                sport,
+                kelly_fraction,
+                ev_threshold,
+                max_fair_odds,
+                preferred_bookmakers,
+                display_timezone,
             )
             all_bets.extend(bets)
         except Exception as e:

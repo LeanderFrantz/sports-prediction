@@ -399,3 +399,31 @@ def test_negative_ev_threshold_admits_negative_ev_bets():
 
     assert len(bets) == 1
     assert bets[0]["ev_percent"] == pytest.approx(-2.5, abs=0.01)
+
+
+def test_display_timezone_defaults_to_berlin():
+    match = _match("A", "B", "2026-08-28T16:30:00Z", [("betrivers", "BR", 2.10)])
+
+    bets = find_positive_ev_bets([match], skip_started=False)
+
+    assert bets[0]["kickoff"] == "Fri, 28 Aug 18:30"
+
+
+def test_display_timezone_can_be_overridden():
+    match = _match("A", "B", "2026-08-28T16:30:00Z", [("betrivers", "BR", 2.10)])
+
+    bets = find_positive_ev_bets(
+        [match], skip_started=False, display_timezone="America/New_York"
+    )
+
+    assert bets[0]["kickoff"] == "Fri, 28 Aug 12:30"
+
+
+def test_unknown_display_timezone_falls_back_to_utc():
+    match = _match("A", "B", "2026-08-28T16:30:00Z", [("betrivers", "BR", 2.10)])
+
+    bets = find_positive_ev_bets(
+        [match], skip_started=False, display_timezone="Not/AZone"
+    )
+
+    assert bets[0]["kickoff"] == "Fri, 28 Aug 16:30"

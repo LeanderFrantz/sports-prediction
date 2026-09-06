@@ -9,6 +9,7 @@ so both entry points stay in sync by construction.
 
 import logging
 import math
+from functools import lru_cache
 from datetime import datetime, timezone, tzinfo
 from zoneinfo import ZoneInfo
 
@@ -56,29 +57,32 @@ DRAW_OUTCOME_LABELS = {
     "pareggio",
 }
 
-# Kickoff times are displayed in this zone.
-DISPLAY_TIMEZONE_NAME = "Europe/Berlin"
+# Kickoff times are displayed in this zone unless a caller overrides it. Like
+# the other defaults here, entry points read the override from configuration
+# and pass it in: this module reads no environment itself.
+DEFAULT_DISPLAY_TIMEZONE = "Europe/Berlin"
 
 
-def _resolve_display_timezone() -> tzinfo:
+@lru_cache(maxsize=None)
+def _resolve_display_timezone(name: str) -> tzinfo:
     """
-    Resolve the display timezone once, at import, falling back to UTC.
+    Resolve a timezone name, falling back to UTC. Cached, so each distinct
+    name is looked up once rather than per match.
 
     ZoneInfo raises ZoneInfoNotFoundError -- a KeyError, not a ValueError -- on
-    a runtime with no tzdata. The deployment zip vendors tzdata, but degrading
-    to UTC beats losing every kickoff time, or the whole run.
+    a runtime with no tzdata, or for a name that does not exist. The deployment
+    zip vendors tzdata, but degrading to UTC beats losing every kickoff time,
+    or the whole run.
     """
     try:
-        return ZoneInfo(DISPLAY_TIMEZONE_NAME)
+        return ZoneInfo(name)
     except Exception:
         logger.warning(
-            "Timezone %s unavailable (missing tzdata?); showing kickoff times in UTC.",
-            DISPLAY_TIMEZONE_NAME,
+            "Timezone %r unavailable (missing tzdata, or unknown name); "
+            "showing kickoff times in UTC.",
+            name,
         )
         return timezone.utc
-
-
-DISPLAY_TIMEZONE = _resolve_display_timezone()
 
 
 def _parse_commence_time(commence_time: str | None) -> datetime | None:
@@ -91,14 +95,14 @@ def _parse_commence_time(commence_time: str | None) -> datetime | None:
         return None
 
 
-def _format_kickoff(commence_time: str | None) -> str | None:
+def _format_kickoff(commence_time: str | None, tz: tzinfo) -> str | None:
     """Format an ISO 8601 UTC commence_time (as returned by The Odds API) as a
-    readable local time string in DISPLAY_TIMEZONE, e.g. 'Fri, 28 Aug 18:30'."""
+    readable local time string in *tz*, e.g. 'Fri, 28 Aug 18:30'."""
     dt_utc = _parse_commence_time(commence_time)
     if dt_utc is None:
         return None
     try:
-        return dt_utc.astimezone(DISPLAY_TIMEZONE).strftime("%a, %d %b %H:%M")
+        return dt_utc.astimezone(tz).strftime("%a, %d %b %H:%M")
     except Exception:
         # Display-only: never let a formatting failure abort the scan.
         return None
@@ -254,6 +258,7 @@ def find_positive_ev_bets(
     max_fair_odds: float | None = None,
     skip_started: bool = True,
     preferred_bookmakers: list[str] | None = None,
+    display_timezone: str | None = None,
 ) -> list[dict]:
     """
     Compare every bookmaker's odds against Pinnacle-derived fair probabilities
@@ -279,6 +284,9 @@ def find_positive_ev_bets(
                           "tipico_de", not the display title "Tipico") to favour
                           when the same bet ties across books, most preferred
                           first. Defaults to PREFERRED_BOOKMAKER_KEYS.
+    :param display_timezone: IANA name the kickoff times are rendered in, e.g.
+                          "Europe/Berlin". Defaults to DEFAULT_DISPLAY_TIMEZONE;
+                          an unknown name falls back to UTC with a warning.
     :raises ValueError: If kelly_fraction is out of range.
     :return: List of bet dicts sorted by ev_percent descending.
     """
@@ -289,6 +297,8 @@ def find_positive_ev_bets(
         PREFERRED_BOOKMAKER_KEYS if preferred_bookmakers is None else list(preferred_bookmakers)
     )
 
+    tz = _resolve_display_timezone(display_timezone or DEFAULT_DISPLAY_TIMEZONE)
+
     positive_ev_bets: list[dict] = []
     seen_bookmaker_keys: set[str] = set()
     now = datetime.now(timezone.utc)
@@ -298,7 +308,7 @@ def find_positive_ev_bets(
         away_team = match.get("away_team")
         sport_title = match.get("sport_title")
         commence_time = match.get("commence_time")
-        kickoff = _format_kickoff(commence_time)
+        kickoff = _format_kickoff(commence_time, tz)
 
         if skip_started:
             # A match with no parseable kickoff is kept: we can't show it has

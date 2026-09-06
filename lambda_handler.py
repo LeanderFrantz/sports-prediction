@@ -24,6 +24,8 @@ All configuration is via environment variables:
   - ODDS_BOOKMAKERS     : Comma-separated bookmaker keys. Replaces
                            ODDS_REGIONS and is billed as one region, but
                            returns only the books listed.
+  - DISPLAY_TIMEZONE    : IANA timezone for kickoff times in the message
+                           (default: Europe/Berlin)
   - MAX_FAIR_ODDS       : Skip bets with fair odds >= this (default: 5.0;
                            longshots underperformed in backtesting, see
                            notebooks/backtest_ev_strategy.ipynb)
@@ -71,6 +73,8 @@ def lambda_handler(event, context):
     preferred_raw = os.environ.get("PREFERRED_BOOKMAKERS", "")
     preferred_bookmakers = [b.strip() for b in preferred_raw.split(",") if b.strip()] or None
 
+    display_timezone = os.environ.get("DISPLAY_TIMEZONE", "").strip() or None
+
     logger.info(
         "Starting EV scan — sports=%s, threshold=%.2f%%, kelly=%.2f, max_bets=%d, "
         "max_fair_odds=%.2f, preferred_bookmakers=%s",
@@ -86,6 +90,7 @@ def lambda_handler(event, context):
             ev_threshold=ev_threshold,
             max_fair_odds=max_fair_odds,
             preferred_bookmakers=preferred_bookmakers,
+            display_timezone=display_timezone,
         )
     except Exception as e:
         logger.error("EV analysis failed: %s", e, exc_info=True)
