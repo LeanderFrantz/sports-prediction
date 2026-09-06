@@ -27,6 +27,12 @@ EXCLUDED_BOOKMAKER_KEYS = {
     "smarkets",
 }
 
+# Bookmakers to favour when the same bet is available at the same odds at more
+# than one book -- normally the ones you actually hold an account with. Ordered
+# by preference; anything not listed falls back to whichever book the API
+# returned first, i.e. no favourite.
+PREFERRED_BOOKMAKER_KEYS = ["tipico_de"]
+
 # Slack allowed when checking that a set of probabilities sums to 1.0.
 _PROB_SUM_TOLERANCE = 1e-9
 
@@ -51,6 +57,14 @@ def _format_kickoff(commence_time: str | None) -> str | None:
         return dt_utc.astimezone(ZoneInfo("Europe/Berlin")).strftime("%a, %d %b %H:%M")
     except (ValueError, TypeError):
         return None
+
+
+def _bookmaker_preference(bm_key: str | None) -> int:
+    """Sort rank for a bookmaker key: lower is more preferred."""
+    try:
+        return PREFERRED_BOOKMAKER_KEYS.index(bm_key)
+    except ValueError:
+        return len(PREFERRED_BOOKMAKER_KEYS)
 
 
 def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], list[float]]:
@@ -259,7 +273,16 @@ def find_positive_ev_bets(
 
         seen_bets: set[tuple] = set()
 
-        for bm in match.get("bookmakers", []):
+        # Identical odds at several books collapse to a single bet below, and
+        # the first one seen wins. Sorting preferred books to the front (stably,
+        # so everything else keeps API order) makes that winner the one you can
+        # actually place the bet with, instead of an arbitrary choice.
+        bookmakers = sorted(
+            match.get("bookmakers", []),
+            key=lambda bm: _bookmaker_preference(bm.get("key")),
+        )
+
+        for bm in bookmakers:
             bm_key = bm.get("key")
             if bm_key == "pinnacle" or bm_key in EXCLUDED_BOOKMAKER_KEYS:
                 continue

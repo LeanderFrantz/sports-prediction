@@ -210,6 +210,32 @@ def test_find_positive_ev_bets_excludes_commission_based_exchanges():
     assert [b["bookmaker_key"] for b in bets] == ["betrivers"]
 
 
+def test_find_positive_ev_bets_prefers_preferred_bookmaker_on_tie():
+    # Same outcome at the same price at two books collapses to one bet; the
+    # preferred book should be the one reported, whatever the API order.
+    match = _match(
+        "A",
+        "B",
+        books=[("betrivers", "BetRivers", 2.10), ("tipico_de", "Tipico", 2.10)],
+    )
+
+    bets = find_positive_ev_bets([match])
+
+    assert [b["bookmaker_key"] for b in bets] == ["tipico_de"]
+
+
+def test_find_positive_ev_bets_falls_back_to_first_when_no_preferred_book():
+    match = _match(
+        "A",
+        "B",
+        books=[("betrivers", "BetRivers", 2.10), ("betway", "Betway", 2.10)],
+    )
+
+    bets = find_positive_ev_bets([match])
+
+    assert [b["bookmaker_key"] for b in bets] == ["betrivers"]
+
+
 def test_find_positive_ev_bets_skips_matches_already_started():
     started = _match("A", "B", "2020-01-01T12:00:00Z", [("betrivers", "BR", 2.10)])
     upcoming = _match("C", "D", "2099-01-01T12:00:00Z", [("betrivers", "BR", 2.10)])
@@ -224,4 +250,3 @@ def test_find_positive_ev_bets_skips_matches_already_started():
     # ...and opting out brings the started match back.
     all_bets = find_positive_ev_bets([started, upcoming, undated], skip_started=False)
     assert [b["match"] for b in all_bets] == ["A - B", "C - D", "E - F"]
-
