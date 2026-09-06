@@ -9,21 +9,22 @@ ev_service.py (the Lambda / Telegram path).
 """
 
 import argparse
-import logging
 import ast
+import logging
 
 import pandas as pd
 from dotenv import load_dotenv
-
-# Load ODDS_API_KEY / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS from .env before
-# the project modules below read them from the environment.
-load_dotenv()
 
 from ..fetch_odds_api import SPORTS_CONFIG, fetch_odds_for_sport
 from ..telegram_notifier import TelegramNotifier
 from .ev_core import find_positive_ev_bets
 
 logger = logging.getLogger(__name__)
+
+# Populate ODDS_API_KEY / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS from .env.
+# These are read at call time, so this no longer has to run before the imports
+# above.
+load_dotenv()
 
 
 def load_odds_from_csv(file_path: str) -> list[dict]:

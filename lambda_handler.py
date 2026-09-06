@@ -120,6 +120,16 @@ def lambda_handler(event, context):
 
 # Allow running locally for testing: python lambda_handler.py
 if __name__ == "__main__":
+    # Local runs read credentials from .env. python-dotenv is a CLI/dev-only
+    # dependency and is deliberately absent from the Lambda zip, so this is
+    # best-effort — in Lambda the variables come from the function config.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
