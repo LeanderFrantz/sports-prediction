@@ -9,7 +9,7 @@ so both entry points stay in sync by construction.
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,30 @@ PREFERRED_BOOKMAKER_KEYS = ["tipico_de", "winamax_de"]
 # Slack allowed when checking that a set of probabilities sums to 1.0.
 _PROB_SUM_TOLERANCE = 1e-9
 
+# Kickoff times are displayed in this zone.
+DISPLAY_TIMEZONE_NAME = "Europe/Berlin"
+
+
+def _resolve_display_timezone() -> tzinfo:
+    """
+    Resolve the display timezone once, at import, falling back to UTC.
+
+    ZoneInfo raises ZoneInfoNotFoundError -- a KeyError, not a ValueError -- on
+    a runtime with no tzdata. The deployment zip vendors tzdata, but degrading
+    to UTC beats losing every kickoff time, or the whole run.
+    """
+    try:
+        return ZoneInfo(DISPLAY_TIMEZONE_NAME)
+    except Exception:
+        logger.warning(
+            "Timezone %s unavailable (missing tzdata?); showing kickoff times in UTC.",
+            DISPLAY_TIMEZONE_NAME,
+        )
+        return timezone.utc
+
+
+DISPLAY_TIMEZONE = _resolve_display_timezone()
+
 
 def _parse_commence_time(commence_time: str | None) -> datetime | None:
     """Parse an ISO 8601 UTC commence_time as returned by The Odds API."""
@@ -51,13 +75,14 @@ def _parse_commence_time(commence_time: str | None) -> datetime | None:
 
 def _format_kickoff(commence_time: str | None) -> str | None:
     """Format an ISO 8601 UTC commence_time (as returned by The Odds API) as a
-    readable Europe/Berlin local time string, e.g. 'Fri, 28 Aug 18:30'."""
+    readable local time string in DISPLAY_TIMEZONE, e.g. 'Fri, 28 Aug 18:30'."""
     dt_utc = _parse_commence_time(commence_time)
     if dt_utc is None:
         return None
     try:
-        return dt_utc.astimezone(ZoneInfo("Europe/Berlin")).strftime("%a, %d %b %H:%M")
-    except (ValueError, TypeError):
+        return dt_utc.astimezone(DISPLAY_TIMEZONE).strftime("%a, %d %b %H:%M")
+    except Exception:
+        # Display-only: never let a formatting failure abort the scan.
         return None
 
 

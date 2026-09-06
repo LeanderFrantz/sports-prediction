@@ -56,11 +56,13 @@ export PREFERRED_BOOKMAKERS="${PREFERRED_BOOKMAKERS:-}"
 
 # --- 1) Build the deployment zip ---
 # Only `requests` is needed at runtime — pandas/python-dotenv/pytest are
-# CLI/dev-only and never imported by lambda_handler.py's call chain.
+# CLI/dev-only and never imported by lambda_handler.py's call chain. `tzdata`
+# is vendored because the Lambda runtime has no system zoneinfo, and without it
+# kickoff times fall back to UTC.
 echo "==> Building deployment package..."
 rm -rf "$BUILD_DIR" "$ZIP_FILE"
 mkdir -p "$BUILD_DIR"
-pip install --quiet requests -t "$BUILD_DIR"
+pip install --quiet requests tzdata -t "$BUILD_DIR"
 cp lambda_handler.py "$BUILD_DIR/"
 cp -r src "$BUILD_DIR/"
 find "$BUILD_DIR" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
