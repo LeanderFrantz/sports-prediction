@@ -121,7 +121,11 @@ def analyze_evs(
         f"Loaded {len(odds_data)} {sport.capitalize()} matches in total. Starting EV calculation..."
     )
 
-    positive_ev_bets = find_positive_ev_bets(odds_data, kelly_fraction=kelly_fraction)
+    # Live fetches skip matches that have already kicked off; a saved CSV is
+    # historical by definition, so replaying one keeps every match.
+    positive_ev_bets = find_positive_ev_bets(
+        odds_data, kelly_fraction=kelly_fraction, skip_started=data_file is None
+    )
 
     # Limit anwenden
     display_bets = positive_ev_bets[:limit] if limit is not None else positive_ev_bets

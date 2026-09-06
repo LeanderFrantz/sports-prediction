@@ -208,3 +208,20 @@ def test_find_positive_ev_bets_excludes_commission_based_exchanges():
     bets = find_positive_ev_bets([match])
 
     assert [b["bookmaker_key"] for b in bets] == ["betrivers"]
+
+
+def test_find_positive_ev_bets_skips_matches_already_started():
+    started = _match("A", "B", "2020-01-01T12:00:00Z", [("betrivers", "BR", 2.10)])
+    upcoming = _match("C", "D", "2099-01-01T12:00:00Z", [("betrivers", "BR", 2.10)])
+    undated = _match("E", "F", None, [("betrivers", "BR", 2.10)])
+
+    bets = find_positive_ev_bets([started, upcoming, undated])
+
+    # The started match is dropped; the undated one is kept, since we can't
+    # show it has started.
+    assert [b["match"] for b in bets] == ["C - D", "E - F"]
+
+    # ...and opting out brings the started match back.
+    all_bets = find_positive_ev_bets([started, upcoming, undated], skip_started=False)
+    assert [b["match"] for b in all_bets] == ["A - B", "C - D", "E - F"]
+

@@ -9,7 +9,7 @@ so both entry points stay in sync by construction.
 
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -31,15 +31,24 @@ EXCLUDED_BOOKMAKER_KEYS = {
 _PROB_SUM_TOLERANCE = 1e-9
 
 
-def _format_kickoff(commence_time: str | None) -> str | None:
-    """Format an ISO 8601 UTC commence_time (as returned by The Odds API) as a
-    readable Europe/Berlin local time string, e.g. 'Fri, 28 Aug 18:30'."""
+def _parse_commence_time(commence_time: str | None) -> datetime | None:
+    """Parse an ISO 8601 UTC commence_time as returned by The Odds API."""
     if not commence_time:
         return None
     try:
-        dt_utc = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
-        dt_local = dt_utc.astimezone(ZoneInfo("Europe/Berlin"))
-        return dt_local.strftime("%a, %d %b %H:%M")
+        return datetime.fromisoformat(str(commence_time).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _format_kickoff(commence_time: str | None) -> str | None:
+    """Format an ISO 8601 UTC commence_time (as returned by The Odds API) as a
+    readable Europe/Berlin local time string, e.g. 'Fri, 28 Aug 18:30'."""
+    dt_utc = _parse_commence_time(commence_time)
+    if dt_utc is None:
+        return None
+    try:
+        return dt_utc.astimezone(ZoneInfo("Europe/Berlin")).strftime("%a, %d %b %H:%M")
     except (ValueError, TypeError):
         return None
 
@@ -184,6 +193,7 @@ def find_positive_ev_bets(
     kelly_fraction: float = 0.25,
     ev_threshold: float = 0.0,
     max_fair_odds: float | None = None,
+    skip_started: bool = True,
 ) -> list[dict]:
     """
     Compare every bookmaker's odds against Pinnacle-derived fair probabilities
@@ -200,6 +210,11 @@ def find_positive_ev_bets(
                            odds are >= this value. Longshots (high fair odds)
                            were found in backtesting to underperform their
                            theoretical EV — see notebooks/backtest_ev_strategy.ipynb.
+    :param skip_started: Skip matches whose kickoff has already passed. The API
+                          returns in-play events, and a live bookmaker line
+                          compared against a same-snapshot Pinnacle line is not
+                          the strategy this was backtested on. Pass False when
+                          replaying saved historical odds.
     :raises ValueError: If kelly_fraction is out of range.
     :return: List of bet dicts sorted by ev_percent descending.
     """
@@ -207,12 +222,21 @@ def find_positive_ev_bets(
         raise ValueError("kelly_fraction must be finite and between 0 and 1")
 
     positive_ev_bets: list[dict] = []
+    now = datetime.now(timezone.utc)
 
     for match in odds_data:
         home_team = match.get("home_team")
         away_team = match.get("away_team")
         sport_title = match.get("sport_title")
-        kickoff = _format_kickoff(match.get("commence_time"))
+        commence_time = match.get("commence_time")
+        kickoff = _format_kickoff(commence_time)
+
+        if skip_started:
+            # A match with no parseable kickoff is kept: we can't show it has
+            # started, and dropping it would silently lose bettable markets.
+            starts_at = _parse_commence_time(commence_time)
+            if starts_at is not None and starts_at <= now:
+                continue
 
         try:
             pinnacle_odds, outcomes_order, labels = _find_pinnacle_odds(match)
