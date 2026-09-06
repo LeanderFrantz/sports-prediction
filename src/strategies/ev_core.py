@@ -349,22 +349,17 @@ def find_positive_ev_bets(
 
             odds_dict = _outcome_prices(h2h_market)
 
-            # Does this bookie have all odds for our outcomes?
+            # Does this bookie have all odds for our outcomes? A missing one
+            # stops the loop, leaving a short list for the check below --
+            # which is what decides, so a separate flag added nothing.
             bookie_odds: list[float] = []
-            valid = True
             for name in outcomes_order:
-                if name == "Draw":
-                    draw_key = _find_draw_key(odds_dict)
-                    if draw_key:
-                        bookie_odds.append(odds_dict[draw_key])
-                    else:
-                        valid = False
-                elif name in odds_dict:
-                    bookie_odds.append(odds_dict[name])
-                else:
-                    valid = False
+                key = _find_draw_key(odds_dict) if name == "Draw" else name
+                if key not in odds_dict:
+                    break
+                bookie_odds.append(odds_dict[key])
 
-            if not valid or len(bookie_odds) != len(pinnacle_odds):
+            if len(bookie_odds) != len(pinnacle_odds):
                 continue
 
             for i in range(len(pinnacle_odds)):
