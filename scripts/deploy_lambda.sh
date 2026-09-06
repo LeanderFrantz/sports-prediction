@@ -66,7 +66,16 @@ export DISPLAY_TIMEZONE="${DISPLAY_TIMEZONE:-}"
 echo "==> Building deployment package..."
 rm -rf "$BUILD_DIR" "$ZIP_FILE"
 mkdir -p "$BUILD_DIR"
-pip install --quiet requests tzdata -t "$BUILD_DIR"
+# Built for the Lambda runtime, not this machine: --platform/--python-version
+# with --only-binary pins the wheels to what actually runs there. Both current
+# dependencies are pure Python, so this is a no-op today -- it is here so the
+# build breaks loudly rather than shipping a host-native wheel the day a
+# dependency grows a compiled extension.
+pip install --quiet \
+  --platform manylinux2014_x86_64 \
+  --python-version 3.12 \
+  --only-binary=:all: \
+  requests tzdata -t "$BUILD_DIR"
 cp lambda_handler.py "$BUILD_DIR/"
 cp -r src "$BUILD_DIR/"
 find "$BUILD_DIR" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
