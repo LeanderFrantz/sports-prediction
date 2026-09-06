@@ -118,8 +118,8 @@ def save_odds(odds_data: list[dict], file_path: str) -> None:
 
 def analyze_evs(
     sport: str,
-    limit: int = None,
-    data_file: str = None,
+    limit: int | None = None,
+    data_file: str | None = None,
     kelly_fraction: float = DEFAULT_KELLY_FRACTION,
     telegram: bool = False,
     preferred_bookmakers: list[str] | None = None,
@@ -143,10 +143,6 @@ def analyze_evs(
     :param max_fair_odds: Skip outcomes with fair odds >= this. None disables
                       the cap.
     """
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-
     if data_file:
         logger.info(f"Loading odds from file: {data_file}...")
         odds_data = load_odds(data_file)
@@ -181,7 +177,7 @@ def analyze_evs(
         preferred_bookmakers=preferred_bookmakers,
     )
 
-    # Limit anwenden
+    # Apply the display limit
     display_bets = positive_ev_bets[:limit] if limit is not None else positive_ev_bets
     limit_title = f" (Top {limit})" if limit is not None else " (all)"
 
@@ -221,6 +217,12 @@ def analyze_evs(
 
 
 def main():
+    # Configured here rather than in analyze_evs(): that function is importable,
+    # and configuring the root logger is the entry point's job, not a library's.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
     parser = argparse.ArgumentParser(
         description="Calculate positive EVs for various sports."
     )
