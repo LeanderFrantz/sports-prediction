@@ -300,3 +300,88 @@ def test_no_warning_when_preferred_bookmaker_is_present(caplog):
         find_positive_ev_bets([match], preferred_bookmakers=["tipico_de"])
 
     assert "did not appear" not in caplog.text
+
+
+def test_competitor_named_like_the_draw_is_not_treated_as_a_draw():
+    # A 2-outcome market whose competitor merely contains "draw" used to be
+    # read as 3-way, duplicating that competitor into the odds vector.
+    match = {
+        "home_team": "Drawbridge FC",
+        "away_team": "B",
+        "sport_title": "Test League",
+        "bookmakers": [
+            {
+                "key": "pinnacle",
+                "title": "Pinnacle",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "Drawbridge FC", "price": 1.9},
+                            {"name": "B", "price": 1.9},
+                        ],
+                    }
+                ],
+            },
+            {
+                "key": "betrivers",
+                "title": "BetRivers",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "Drawbridge FC", "price": 2.10},
+                            {"name": "B", "price": 1.80},
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+
+    bets = find_positive_ev_bets([match])
+
+    assert [b["type"] for b in bets] == ["Home (1)"]
+    assert all(b["outcome"] != "Draw" for b in bets)
+
+
+def test_real_draw_label_is_still_detected():
+    match = {
+        "home_team": "A",
+        "away_team": "B",
+        "sport_title": "Test League",
+        "bookmakers": [
+            {
+                "key": "pinnacle",
+                "title": "Pinnacle",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "A", "price": 2.5},
+                            {"name": "Draw", "price": 3.4},
+                            {"name": "B", "price": 3.0},
+                        ],
+                    }
+                ],
+            },
+            {
+                "key": "betrivers",
+                "title": "BetRivers",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": "A", "price": 2.5},
+                            {"name": "Draw", "price": 4.0},
+                            {"name": "B", "price": 3.0},
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+
+    bets = find_positive_ev_bets([match])
+
+    assert [b["outcome"] for b in bets] == ["Draw"]

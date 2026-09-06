@@ -38,6 +38,17 @@ PREFERRED_BOOKMAKER_KEYS = ["tipico_de", "winamax_de"]
 # Slack allowed when checking that a set of probabilities sums to 1.0.
 _PROB_SUM_TOLERANCE = 1e-9
 
+# Outcome labels used for the draw in a 3-way market, across the bookmakers
+# The Odds API returns. Compared exactly, after lowercasing and stripping.
+DRAW_OUTCOME_LABELS = {
+    "draw",
+    "tie",
+    "match nul",
+    "unentschieden",
+    "empate",
+    "pareggio",
+}
+
 # Kickoff times are displayed in this zone.
 DISPLAY_TIMEZONE_NAME = "Europe/Berlin"
 
@@ -176,15 +187,15 @@ def _outcome_prices(market: dict) -> dict[str, float]:
 
 
 def _find_draw_key(odds_dict: dict) -> str | None:
-    """Find the draw outcome key in a bookmaker's odds dict, if present."""
-    return next(
-        (
-            k
-            for k in odds_dict.keys()
-            if "draw" in k.lower() or k.lower() == "draw" or k.lower() == "match nul"
-        ),
-        None,
-    )
+    """
+    Find the draw outcome key in a bookmaker's odds dict, if present.
+
+    Matched exactly against DRAW_OUTCOME_LABELS after normalising, not as a
+    substring: a competitor whose name merely contains "draw" used to be taken
+    for the draw, turning a 2-outcome market into a 3-outcome one with a
+    duplicated competitor and silently bogus probabilities.
+    """
+    return next((k for k in odds_dict if k.strip().lower() in DRAW_OUTCOME_LABELS), None)
 
 
 def _find_pinnacle_odds(match: dict) -> tuple[list[float] | None, list[str], list[str]]:
