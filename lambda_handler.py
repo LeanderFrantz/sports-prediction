@@ -18,6 +18,12 @@ All configuration is via environment variables:
                            when a bet ties across books, most preferred first
                            (e.g. "tipico_de,winamax_de"). Keys, not display
                            titles. Unset keeps the in-code default.
+  - ODDS_REGIONS        : Comma-separated Odds API regions (default:
+                           eu,uk,us,au). Billing is markets x regions, so
+                           fewer regions costs proportionally less.
+  - ODDS_BOOKMAKERS     : Comma-separated bookmaker keys. Replaces
+                           ODDS_REGIONS and is billed as one region, but
+                           returns only the books listed.
   - MAX_FAIR_ODDS       : Skip bets with fair odds >= this (default: 5.0;
                            longshots underperformed in backtesting, see
                            notebooks/backtest_ev_strategy.ipynb)

@@ -53,6 +53,9 @@ export MAX_BETS="${MAX_BETS:-25}"
 export MAX_FAIR_ODDS="${MAX_FAIR_ODDS:-5.0}"
 # Empty is valid: the code falls back to its own default list.
 export PREFERRED_BOOKMAKERS="${PREFERRED_BOOKMAKERS:-}"
+# Both empty by default: the code falls back to DEFAULT_REGIONS.
+export ODDS_REGIONS="${ODDS_REGIONS:-}"
+export ODDS_BOOKMAKERS="${ODDS_BOOKMAKERS:-}"
 
 # --- 1) Build the deployment zip ---
 # Only `requests` is needed at runtime — pandas/python-dotenv/pytest are
@@ -113,6 +116,8 @@ keys = [
     "MAX_BETS",
     "MAX_FAIR_ODDS",
     "PREFERRED_BOOKMAKERS",
+    "ODDS_REGIONS",
+    "ODDS_BOOKMAKERS",
 ]
 with open(sys.argv[1], "w", encoding="utf-8") as fh:
     json.dump({"Variables": {k: os.environ[k] for k in keys}}, fh)
