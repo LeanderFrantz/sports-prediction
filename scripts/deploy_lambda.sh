@@ -13,7 +13,9 @@ FUNCTION_NAME="sports-prediction-ev"
 ROLE_NAME="sports-prediction-ev-lambda-role"
 RUNTIME="python3.12"
 HANDLER="lambda_handler.lambda_handler"
-TIMEOUT=60
+# Generous relative to a normal run (leagues are fetched concurrently), but it
+# has to cover a slow league plus retries without killing the scan mid-flight.
+TIMEOUT=120
 MEMORY_SIZE=256
 RULE_NAME="sports-prediction-ev-weekly"
 # Fridays at 17:00 CEST. EventBridge cron runs in UTC and isn't DST-aware,
@@ -44,11 +46,11 @@ for var in ODDS_API_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_IDS; do
     exit 1
   fi
 done
-EV_THRESHOLD="${EV_THRESHOLD:-1.0}"
-SPORTS="${SPORTS:-football}"
-KELLY_FRACTION="${KELLY_FRACTION:-0.25}"
-MAX_BETS="${MAX_BETS:-25}"
-MAX_FAIR_ODDS="${MAX_FAIR_ODDS:-5.0}"
+export EV_THRESHOLD="${EV_THRESHOLD:-1.0}"
+export SPORTS="${SPORTS:-football}"
+export KELLY_FRACTION="${KELLY_FRACTION:-0.25}"
+export MAX_BETS="${MAX_BETS:-25}"
+export MAX_FAIR_ODDS="${MAX_FAIR_ODDS:-5.0}"
 
 # --- 1) Build the deployment zip ---
 # Only `requests` is needed at runtime — pandas/python-dotenv/pytest are
@@ -86,7 +88,31 @@ else
 fi
 ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)
 
-ENV_VARS="Variables={ODDS_API_KEY=$ODDS_API_KEY,TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_IDS=$TELEGRAM_CHAT_IDS,EV_THRESHOLD=$EV_THRESHOLD,SPORTS=$SPORTS,KELLY_FRACTION=$KELLY_FRACTION,MAX_BETS=$MAX_BETS,MAX_FAIR_ODDS=$MAX_FAIR_ODDS}"
+# Serialise the environment as JSON rather than the CLI's `Variables={k=v,...}`
+# shorthand: that parser splits on commas, so a comma-separated TELEGRAM_CHAT_IDS
+# (or any value containing a comma or `=`) makes the deploy fail outright.
+# mktemp creates the file 0600 — it holds the API key and bot token.
+ENV_FILE="$(mktemp -t sports-prediction-lambda-env)"
+trap 'rm -f "$ENV_FILE"' EXIT
+python3 - "$ENV_FILE" <<'PYEOF'
+import json
+import os
+import sys
+
+keys = [
+    "ODDS_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_IDS",
+    "EV_THRESHOLD",
+    "SPORTS",
+    "KELLY_FRACTION",
+    "MAX_BETS",
+    "MAX_FAIR_ODDS",
+]
+with open(sys.argv[1], "w", encoding="utf-8") as fh:
+    json.dump({"Variables": {k: os.environ[k] for k in keys}}, fh)
+PYEOF
+ENV_VARS="file://$ENV_FILE"
 
 # --- 3) Create or update the Lambda function ---
 echo "==> Deploying Lambda function..."
