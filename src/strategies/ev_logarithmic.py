@@ -10,7 +10,9 @@ ev_service.py (the Lambda / Telegram path).
 
 import argparse
 import ast
+import json
 import logging
+import os
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -34,52 +36,84 @@ load_dotenv()
 
 def load_odds_from_csv(file_path: str) -> list[dict]:
     """
-    Load odds data from a CSV file.
+    Load odds data from a legacy CSV file.
+
+    Retained for CSVs saved before the switch to newline-delimited JSON; new
+    saves go through save_odds(). The bookmakers column holds a repr() of the
+    original nested structure, so it has to be parsed back out row by row.
 
     :param file_path: Path to the CSV file.
     :return: A list of match dictionaries.
     """
     df = pd.read_csv(file_path)
     odds_data = []
-    for _, row in df.iterrows():
-        match = {
-            "id": row["id"],
-            "sport_key": row["sport_key"],
-            "sport_title": row["sport_title"],
-            "commence_time": row["commence_time"],
-            "home_team": row["home_team"],
-            "away_team": row["away_team"],
-            "bookmakers": ast.literal_eval(row["bookmakers"]),
-        }
-        odds_data.append(match)
+    for idx, row in df.iterrows():
+        raw = row["bookmakers"]
+        # An empty or truncated cell reads back as NaN and used to raise,
+        # losing the whole file over one bad row.
+        if not isinstance(raw, str):
+            logger.warning("Row %s has no bookmakers data; skipping.", idx)
+            continue
+        try:
+            bookmakers = ast.literal_eval(raw)
+        except (ValueError, SyntaxError) as e:
+            logger.warning("Row %s has unparseable bookmakers data (%s); skipping.", idx, e)
+            continue
+        odds_data.append(
+            {
+                "id": row["id"],
+                "sport_key": row["sport_key"],
+                "sport_title": row["sport_title"],
+                "commence_time": row["commence_time"],
+                "home_team": row["home_team"],
+                "away_team": row["away_team"],
+                "bookmakers": bookmakers,
+            }
+        )
     return odds_data
 
 
-def save_odds_to_csv(odds_data: list[dict], file_path: str) -> None:
+def load_odds(file_path: str) -> list[dict]:
     """
-    Save loaded odds data to a CSV file.
+    Load odds data from a saved file, newline-delimited JSON or legacy CSV.
+
+    :param file_path: Path to the file; a .csv suffix selects the legacy reader.
+    :return: A list of match dictionaries.
+    """
+    if file_path.lower().endswith(".csv"):
+        return load_odds_from_csv(file_path)
+
+    odds_data = []
+    with open(file_path, encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                odds_data.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                logger.warning("Line %d is not valid JSON (%s); skipping.", lineno, e)
+    return odds_data
+
+
+def save_odds(odds_data: list[dict], file_path: str) -> None:
+    """
+    Save odds data as newline-delimited JSON, one match per line.
+
+    The API response is already JSON, so this round-trips losslessly and
+    without the repr()/literal_eval() dance the CSV format required.
 
     :param odds_data: List of match dictionaries to save.
-    :param file_path: Path to the destination CSV file.
+    :param file_path: Path to the destination file.
     """
-    # Convert data to a flat format for CSV
-    rows = []
-    for match in odds_data:
-        rows.append(
-            {
-                "id": match["id"],
-                "sport_key": match["sport_key"],
-                "sport_title": match["sport_title"],
-                "commence_time": match["commence_time"],
-                "home_team": match["home_team"],
-                "away_team": match["away_team"],
-                "bookmakers": str(match["bookmakers"]),
-            }
-        )
+    directory = os.path.dirname(file_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
 
-    df = pd.DataFrame(rows)
-    df.to_csv(file_path, index=False)
-    logger.info(f"Odds successfully saved to {file_path}.")
+    with open(file_path, "w", encoding="utf-8") as fh:
+        for match in odds_data:
+            fh.write(json.dumps(match, ensure_ascii=False) + "\n")
+    logger.info("Odds successfully saved to %s.", file_path)
 
 
 def analyze_evs(
@@ -115,7 +149,7 @@ def analyze_evs(
 
     if data_file:
         logger.info(f"Loading odds from file: {data_file}...")
-        odds_data = load_odds_from_csv(data_file)
+        odds_data = load_odds(data_file)
     else:
         result = fetch_odds_for_sport(sport)
         odds_data = result["data"]
@@ -130,7 +164,7 @@ def analyze_evs(
             return
 
         # Auto-save if no file was specified
-        save_odds_to_csv(odds_data, f"data/{sport.lower()}_odds_data.csv")
+        save_odds(odds_data, f"data/{sport.lower()}_odds_data.jsonl")
 
     logger.info(
         f"Loaded {len(odds_data)} {sport.capitalize()} matches in total. Starting EV calculation..."
@@ -208,7 +242,8 @@ def main():
         "--data-file",
         type=str,
         default=None,
-        help="Path to a CSV file with match data (instead of API call)",
+        help="Path to a saved odds file to analyse instead of calling the API "
+        "(newline-delimited JSON, or a legacy .csv)",
     )
     parser.add_argument(
         "--kelly-fraction",
