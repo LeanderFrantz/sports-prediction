@@ -366,7 +366,13 @@ def find_positive_ev_bets(
                 f_odd = fair_odds[i]
 
                 ev = (f_prob * b_odd) - 1.0
-                if ev <= 0.0:
+
+                # ev_threshold is the only gate. It used to be preceded by a
+                # hardcoded ev > 0 check, which made a negative threshold --
+                # the way you calibrate the model against known-negative bets
+                # -- silently return nothing. Compared before rounding, so a
+                # bet does not qualify on a rounding artefact.
+                if ev * 100 < ev_threshold:
                     continue
 
                 # Deduplication: identify a bet uniquely
@@ -380,9 +386,6 @@ def find_positive_ev_bets(
                 kelly = (f_prob * b - (1 - f_prob)) / b
                 kelly_frac = kelly * kelly_fraction * 100
                 ev_percent = round(ev * 100, 2)
-
-                if ev_percent < ev_threshold:
-                    continue
 
                 positive_ev_bets.append(
                     {

@@ -385,3 +385,17 @@ def test_real_draw_label_is_still_detected():
     bets = find_positive_ev_bets([match])
 
     assert [b["outcome"] for b in bets] == ["Draw"]
+
+
+def test_negative_ev_threshold_admits_negative_ev_bets():
+    # A hardcoded ev > 0 gate used to make a negative threshold return nothing,
+    # which is exactly the setting you want for calibration.
+    # Fair odds are 2.0, so 1.95 on the home side is -2.5% EV.
+    match = _match("A", "B", books=[("betrivers", "BetRivers", 1.95)])
+
+    assert find_positive_ev_bets([match]) == []
+
+    bets = find_positive_ev_bets([match], ev_threshold=-5.0)
+
+    assert len(bets) == 1
+    assert bets[0]["ev_percent"] == pytest.approx(-2.5, abs=0.01)
