@@ -250,3 +250,53 @@ def test_find_positive_ev_bets_skips_matches_already_started():
     # ...and opting out brings the started match back.
     all_bets = find_positive_ev_bets([started, upcoming, undated], skip_started=False)
     assert [b["match"] for b in all_bets] == ["A - B", "C - D", "E - F"]
+
+
+def test_preferred_bookmakers_argument_overrides_the_default():
+    match = _match(
+        "A",
+        "B",
+        books=[("betrivers", "BetRivers", 2.10), ("tipico_de", "Tipico", 2.10)],
+    )
+
+    bets = find_positive_ev_bets([match], preferred_bookmakers=["betrivers"])
+
+    assert [b["bookmaker_key"] for b in bets] == ["betrivers"]
+
+
+def test_preferred_bookmakers_respects_list_order():
+    match = _match(
+        "A",
+        "B",
+        books=[("winamax_de", "Winamax", 2.10), ("tipico_de", "Tipico", 2.10)],
+    )
+
+    first = find_positive_ev_bets(
+        [match], preferred_bookmakers=["tipico_de", "winamax_de"]
+    )
+    second = find_positive_ev_bets(
+        [match], preferred_bookmakers=["winamax_de", "tipico_de"]
+    )
+
+    assert [b["bookmaker_key"] for b in first] == ["tipico_de"]
+    assert [b["bookmaker_key"] for b in second] == ["winamax_de"]
+
+
+def test_unknown_preferred_bookmaker_key_logs_a_warning(caplog):
+    # A typo silently does nothing otherwise -- these are API keys, not titles.
+    match = _match("A", "B", books=[("betrivers", "BetRivers", 2.10)])
+
+    with caplog.at_level("WARNING"):
+        find_positive_ev_bets([match], preferred_bookmakers=["Tipico"])
+
+    assert "Tipico" in caplog.text
+    assert "did not appear in any match" in caplog.text
+
+
+def test_no_warning_when_preferred_bookmaker_is_present(caplog):
+    match = _match("A", "B", books=[("tipico_de", "Tipico", 2.10)])
+
+    with caplog.at_level("WARNING"):
+        find_positive_ev_bets([match], preferred_bookmakers=["tipico_de"])
+
+    assert "did not appear" not in caplog.text

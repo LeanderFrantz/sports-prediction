@@ -14,6 +14,10 @@ All configuration is via environment variables:
   - SPORTS              : Comma-separated sports to scan (default: football)
   - KELLY_FRACTION      : Kelly criterion fraction (default: 0.25)
   - MAX_BETS            : Max number of top bets to send (default: 25)
+  - PREFERRED_BOOKMAKERS: Comma-separated Odds API bookmaker keys to favour
+                           when a bet ties across books, most preferred first
+                           (e.g. "tipico_de,winamax_de"). Keys, not display
+                           titles. Unset keeps the in-code default.
   - MAX_FAIR_ODDS       : Skip bets with fair odds >= this (default: 5.0;
                            longshots underperformed in backtesting, see
                            notebooks/backtest_ev_strategy.ipynb)
@@ -52,9 +56,15 @@ def lambda_handler(event, context):
     sports_raw = os.environ.get("SPORTS", "football")
     sports = [s.strip().lower() for s in sports_raw.split(",") if s.strip()]
 
+    # Unset or empty falls back to ev_core's default list.
+    preferred_raw = os.environ.get("PREFERRED_BOOKMAKERS", "")
+    preferred_bookmakers = [b.strip() for b in preferred_raw.split(",") if b.strip()] or None
+
     logger.info(
-        "Starting EV scan — sports=%s, threshold=%.2f%%, kelly=%.2f, max_bets=%d, max_fair_odds=%.2f",
+        "Starting EV scan — sports=%s, threshold=%.2f%%, kelly=%.2f, max_bets=%d, "
+        "max_fair_odds=%.2f, preferred_bookmakers=%s",
         sports, ev_threshold, kelly_fraction, max_bets, max_fair_odds,
+        preferred_bookmakers or "(default)",
     )
 
     # --- Run EV analysis ---
@@ -64,6 +74,7 @@ def lambda_handler(event, context):
             kelly_fraction=kelly_fraction,
             ev_threshold=ev_threshold,
             max_fair_odds=max_fair_odds,
+            preferred_bookmakers=preferred_bookmakers,
         )
     except Exception as e:
         logger.error("EV analysis failed: %s", e, exc_info=True)

@@ -27,11 +27,13 @@ EXCLUDED_BOOKMAKER_KEYS = {
     "smarkets",
 }
 
-# Bookmakers to favour when the same bet is available at the same odds at more
-# than one book -- normally the ones you actually hold an account with. Ordered
-# by preference; anything not listed falls back to whichever book the API
-# returned first, i.e. no favourite.
-PREFERRED_BOOKMAKER_KEYS = ["tipico_de"]
+# Default bookmakers to favour when the same bet is available at the same odds
+# at more than one book -- normally the ones you actually hold an account with.
+# Ordered by preference; anything not listed falls back to whichever book the
+# API returned first, i.e. no favourite. Callers override this via the
+# preferred_bookmakers argument (the Lambda and CLI read it from configuration);
+# this module deliberately reads no environment itself.
+PREFERRED_BOOKMAKER_KEYS = ["tipico_de", "winamax_de"]
 
 # Slack allowed when checking that a set of probabilities sums to 1.0.
 _PROB_SUM_TOLERANCE = 1e-9
@@ -59,12 +61,12 @@ def _format_kickoff(commence_time: str | None) -> str | None:
         return None
 
 
-def _bookmaker_preference(bm_key: str | None) -> int:
+def _bookmaker_preference(bm_key: str | None, preferred: list[str]) -> int:
     """Sort rank for a bookmaker key: lower is more preferred."""
     try:
-        return PREFERRED_BOOKMAKER_KEYS.index(bm_key)
+        return preferred.index(bm_key)
     except ValueError:
-        return len(PREFERRED_BOOKMAKER_KEYS)
+        return len(preferred)
 
 
 def solve_logarithmic_pure(odds_bookmaker: list[float]) -> tuple[list[float], list[float]]:
@@ -208,6 +210,7 @@ def find_positive_ev_bets(
     ev_threshold: float = 0.0,
     max_fair_odds: float | None = None,
     skip_started: bool = True,
+    preferred_bookmakers: list[str] | None = None,
 ) -> list[dict]:
     """
     Compare every bookmaker's odds against Pinnacle-derived fair probabilities
@@ -229,13 +232,22 @@ def find_positive_ev_bets(
                           compared against a same-snapshot Pinnacle line is not
                           the strategy this was backtested on. Pass False when
                           replaying saved historical odds.
+    :param preferred_bookmakers: Bookmaker keys (as used by The Odds API, e.g.
+                          "tipico_de", not the display title "Tipico") to favour
+                          when the same bet ties across books, most preferred
+                          first. Defaults to PREFERRED_BOOKMAKER_KEYS.
     :raises ValueError: If kelly_fraction is out of range.
     :return: List of bet dicts sorted by ev_percent descending.
     """
     if not math.isfinite(kelly_fraction) or not 0 <= kelly_fraction <= 1:
         raise ValueError("kelly_fraction must be finite and between 0 and 1")
 
+    preferred = (
+        PREFERRED_BOOKMAKER_KEYS if preferred_bookmakers is None else list(preferred_bookmakers)
+    )
+
     positive_ev_bets: list[dict] = []
+    seen_bookmaker_keys: set[str] = set()
     now = datetime.now(timezone.utc)
 
     for match in odds_data:
@@ -279,11 +291,12 @@ def find_positive_ev_bets(
         # actually place the bet with, instead of an arbitrary choice.
         bookmakers = sorted(
             match.get("bookmakers", []),
-            key=lambda bm: _bookmaker_preference(bm.get("key")),
+            key=lambda bm: _bookmaker_preference(bm.get("key"), preferred),
         )
 
         for bm in bookmakers:
             bm_key = bm.get("key")
+            seen_bookmaker_keys.add(bm_key)
             if bm_key == "pinnacle" or bm_key in EXCLUDED_BOOKMAKER_KEYS:
                 continue
 
@@ -351,6 +364,18 @@ def find_positive_ev_bets(
                         "kelly_suggested": round(max(0.0, kelly_frac), 2),
                     }
                 )
+
+    # A misspelled key silently does nothing, so say so. Only meaningful once
+    # we have actually seen some bookmakers to compare against.
+    if seen_bookmaker_keys:
+        unseen = [k for k in preferred if k not in seen_bookmaker_keys]
+        if unseen:
+            logger.warning(
+                "Preferred bookmaker key(s) %s did not appear in any match. "
+                "These are The Odds API bookmaker keys (e.g. 'tipico_de'), "
+                "not display titles.",
+                ", ".join(unseen),
+            )
 
     positive_ev_bets.sort(key=lambda x: x["ev_percent"], reverse=True)
     return positive_ev_bets

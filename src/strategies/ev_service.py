@@ -22,6 +22,7 @@ def get_positive_ev_bets(
     kelly_fraction: float = 0.25,
     ev_threshold: float = 0.0,
     max_fair_odds: float | None = None,
+    preferred_bookmakers: list[str] | None = None,
 ) -> list[dict]:
     """
     Fetch odds for a sport and return all positive-EV bets.
@@ -31,6 +32,8 @@ def get_positive_ev_bets(
     :param ev_threshold: Minimum EV% to include in results.
     :param max_fair_odds: If set, skip outcomes with Pinnacle-derived fair
                            odds >= this value (see ev_core.find_positive_ev_bets).
+    :param preferred_bookmakers: Bookmaker keys to favour on a tie (see
+                           ev_core.find_positive_ev_bets). None keeps the default.
     :return: List of bet dicts sorted by ev_percent descending.
     :raises ValueError: If kelly_fraction is out of range or sport is invalid.
     """
@@ -56,7 +59,11 @@ def get_positive_ev_bets(
     )
 
     bets = find_positive_ev_bets(
-        odds_data, kelly_fraction=kelly_fraction, ev_threshold=ev_threshold, max_fair_odds=max_fair_odds
+        odds_data,
+        kelly_fraction=kelly_fraction,
+        ev_threshold=ev_threshold,
+        max_fair_odds=max_fair_odds,
+        preferred_bookmakers=preferred_bookmakers,
     )
 
     logger.info(
@@ -73,6 +80,7 @@ def get_all_positive_ev_bets(
     kelly_fraction: float = 0.25,
     ev_threshold: float = 0.0,
     max_fair_odds: float | None = None,
+    preferred_bookmakers: list[str] | None = None,
 ) -> list[dict]:
     """
     Run EV analysis across multiple sports and return combined results.
@@ -82,6 +90,8 @@ def get_all_positive_ev_bets(
     :param ev_threshold: Minimum EV% to include in results.
     :param max_fair_odds: If set, skip outcomes with Pinnacle-derived fair
                            odds >= this value (see ev_core.find_positive_ev_bets).
+    :param preferred_bookmakers: Bookmaker keys to favour on a tie (see
+                           ev_core.find_positive_ev_bets). None keeps the default.
     :return: Combined list of bet dicts sorted by ev_percent descending.
     """
     if sports is None:
@@ -90,7 +100,9 @@ def get_all_positive_ev_bets(
     all_bets: list[dict] = []
     for sport in sports:
         try:
-            bets = get_positive_ev_bets(sport, kelly_fraction, ev_threshold, max_fair_odds)
+            bets = get_positive_ev_bets(
+                sport, kelly_fraction, ev_threshold, max_fair_odds, preferred_bookmakers
+            )
             all_bets.extend(bets)
         except Exception as e:
             logger.error("Failed to analyze %s: %s", sport, e)

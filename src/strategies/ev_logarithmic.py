@@ -83,6 +83,7 @@ def analyze_evs(
     data_file: str = None,
     kelly_fraction: float = 0.25,
     telegram: bool = False,
+    preferred_bookmakers: list[str] | None = None,
 ) -> None:
     """
     Analyze expected value (EV) for a given sport or data file and print results.
@@ -93,6 +94,9 @@ def analyze_evs(
     :param kelly_fraction: The fractional Kelly multiplier to use.
     :param telegram: If True, also send the displayed bets to Telegram
                       (requires TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS).
+    :param preferred_bookmakers: Bookmaker keys to favour when a bet ties across
+                      books (see ev_core.find_positive_ev_bets). None keeps the
+                      default.
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -124,7 +128,10 @@ def analyze_evs(
     # Live fetches skip matches that have already kicked off; a saved CSV is
     # historical by definition, so replaying one keeps every match.
     positive_ev_bets = find_positive_ev_bets(
-        odds_data, kelly_fraction=kelly_fraction, skip_started=data_file is None
+        odds_data,
+        kelly_fraction=kelly_fraction,
+        skip_started=data_file is None,
+        preferred_bookmakers=preferred_bookmakers,
     )
 
     # Limit anwenden
@@ -197,13 +204,33 @@ def main():
         help="Fraction for Kelly Criterion (Default: 0.25)",
     )
     parser.add_argument(
+        "--preferred-bookmakers",
+        type=str,
+        default=None,
+        help="Comma-separated Odds API bookmaker keys to favour when a bet ties "
+        "across books, most preferred first (e.g. tipico_de,winamax_de). These "
+        "are keys, not display titles. Default: PREFERRED_BOOKMAKER_KEYS",
+    )
+    parser.add_argument(
         "--telegram",
         action="store_true",
         help="Also send the displayed bets to Telegram (default: off; "
         "requires TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS in .env)",
     )
     args = parser.parse_args()
-    analyze_evs(args.sport, args.limit, args.data_file, args.kelly_fraction, args.telegram)
+    preferred = (
+        [b.strip() for b in args.preferred_bookmakers.split(",") if b.strip()] or None
+        if args.preferred_bookmakers
+        else None
+    )
+    analyze_evs(
+        args.sport,
+        args.limit,
+        args.data_file,
+        args.kelly_fraction,
+        args.telegram,
+        preferred,
+    )
 
 
 if __name__ == "__main__":
