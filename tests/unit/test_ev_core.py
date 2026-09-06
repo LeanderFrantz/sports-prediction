@@ -145,3 +145,66 @@ def test_find_positive_ev_bets_skips_malformed_outcomes_without_crashing():
 
     # The malformed match is skipped; the healthy one still comes through.
     assert [b["match"] for b in bets] == ["C - D"]
+
+
+def _match(home, away, commence_time=None, books=()):
+    """Build a match with a Pinnacle line plus the given (key, title, home_price)."""
+    bookmakers = [
+        {
+            "key": "pinnacle",
+            "title": "Pinnacle",
+            "markets": [
+                {
+                    "key": "h2h",
+                    "outcomes": [
+                        {"name": home, "price": 1.9},
+                        {"name": away, "price": 1.9},
+                    ],
+                }
+            ],
+        }
+    ]
+    for key, title, price in books:
+        bookmakers.append(
+            {
+                "key": key,
+                "title": title,
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": home, "price": price},
+                            {"name": away, "price": 1.8},
+                        ],
+                    }
+                ],
+            }
+        )
+    match = {
+        "home_team": home,
+        "away_team": away,
+        "sport_title": "Test League",
+        "bookmakers": bookmakers,
+    }
+    if commence_time:
+        match["commence_time"] = commence_time
+    return match
+
+
+def test_find_positive_ev_bets_excludes_commission_based_exchanges():
+    # Exchange odds are pre-commission, so they show a phantom edge against
+    # Pinnacle's fair odds.
+    match = _match(
+        "A",
+        "B",
+        books=[
+            ("smarkets", "Smarkets", 2.10),
+            ("matchbook", "Matchbook", 2.11),
+            ("betfair_ex_uk", "Betfair", 2.12),
+            ("betrivers", "BetRivers", 2.05),
+        ],
+    )
+
+    bets = find_positive_ev_bets([match])
+
+    assert [b["bookmaker_key"] for b in bets] == ["betrivers"]

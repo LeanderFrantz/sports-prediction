@@ -14,8 +14,18 @@ from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-# Exchange-style keys we don't treat as fixed-odds bookmakers to compare against.
-EXCLUDED_BOOKMAKER_KEYS = {"h2h_lay", "betfair_ex_uk", "betfair_ex_eu", "betfair_ex_au"}
+# Betting exchanges, whose quoted odds are pre-commission and so overstate the
+# real return by roughly the commission rate (~2-5%). Comparing them against
+# Pinnacle's fair odds produces a systematic phantom edge, so they are skipped
+# rather than treated as fixed-odds bookmakers. Extend this if you enable
+# regions carrying exchanges not listed here.
+EXCLUDED_BOOKMAKER_KEYS = {
+    "betfair_ex_uk",
+    "betfair_ex_eu",
+    "betfair_ex_au",
+    "matchbook",
+    "smarkets",
+}
 
 # Slack allowed when checking that a set of probabilities sums to 1.0.
 _PROB_SUM_TOLERANCE = 1e-9
