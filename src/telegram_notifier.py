@@ -9,6 +9,7 @@ Configuration is read from environment variables:
                          (e.g. "123456789,-100987654321").
 """
 
+import html
 import logging
 import os
 
@@ -153,15 +154,15 @@ class TelegramNotifier:
         league = bet.get("league", "")
         emoji = _sport_emoji(league)
         kickoff = bet.get("kickoff")
-        kickoff_line = f"📅 {kickoff}\n" if kickoff else ""
+        kickoff_line = f"📅 {_esc(kickoff)}\n" if kickoff else ""
 
         return (
             f"🎯 <b>Positive EV Bet #{index}</b>\n"
-            f"{emoji} {league}\n"
+            f"{emoji} {_esc(league)}\n"
             f"{kickoff_line}"
-            f"<b>{bet['match']}</b>\n"
-            f"Tip: {bet['outcome']} ({bet['type']})\n"
-            f"📊 Bookmaker: {bet['bookmaker']} | "
+            f"<b>{_esc(bet['match'])}</b>\n"
+            f"Tip: {_esc(bet['outcome'])} ({_esc(bet['type'])})\n"
+            f"📊 Bookmaker: {_esc(bet['bookmaker'])} | "
             f"Odds: {bet['bookmaker_odds']} (Fair: {bet['fair_odds']}, Pinnacle: {bet['pinnacle_odds']})\n"
             f"📈 EV: <b>+{bet['ev_percent']}%</b>\n"
             f"💰 Kelly ({kelly_fraction:.0%}): {bet['kelly_suggested']}%"
@@ -177,7 +178,7 @@ class TelegramNotifier:
         :param sports: Sports that were scanned.
         :return: Formatted HTML header string.
         """
-        sports_str = ", ".join(s.capitalize() for s in sports)
+        sports_str = _esc(", ".join(s.capitalize() for s in sports))
         return (
             f"🔔 <b>EV Alert — {total_bets} tip{'s' if total_bets != 1 else ''} found</b>\n"
             f"Sports: {sports_str}\n"
@@ -194,7 +195,7 @@ class TelegramNotifier:
         :param sports: Sports that were scanned.
         :return: Formatted HTML string.
         """
-        sports_str = ", ".join(s.capitalize() for s in sports)
+        sports_str = _esc(", ".join(s.capitalize() for s in sports))
         return (
             f"📭 <b>No tips found</b>\n"
             f"Sports: {sports_str}\n"
@@ -252,6 +253,17 @@ class TelegramNotifier:
 # ------------------------------------------------------------------
 # Private helpers
 # ------------------------------------------------------------------
+
+
+def _esc(value) -> str:
+    """
+    Escape a value for Telegram's HTML parse mode.
+
+    Team and bookmaker names routinely contain "&" (e.g. "Brighton & Hove
+    Albion"); unescaped, Telegram rejects the whole message with a 400 and the
+    entire chunk of bets is lost, not just the one entry.
+    """
+    return html.escape(str(value), quote=False)
 
 
 def _split_text(text: str, max_length: int) -> list[str]:
