@@ -17,7 +17,12 @@ from dotenv import load_dotenv
 
 from ..fetch_odds_api import SPORTS_CONFIG, fetch_odds_for_sport
 from ..telegram_notifier import TelegramNotifier
-from .ev_core import find_positive_ev_bets
+from .ev_core import (
+    DEFAULT_EV_THRESHOLD,
+    DEFAULT_KELLY_FRACTION,
+    DEFAULT_MAX_FAIR_ODDS,
+    find_positive_ev_bets,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +86,11 @@ def analyze_evs(
     sport: str,
     limit: int = None,
     data_file: str = None,
-    kelly_fraction: float = 0.25,
+    kelly_fraction: float = DEFAULT_KELLY_FRACTION,
     telegram: bool = False,
     preferred_bookmakers: list[str] | None = None,
+    ev_threshold: float = DEFAULT_EV_THRESHOLD,
+    max_fair_odds: float | None = DEFAULT_MAX_FAIR_ODDS,
 ) -> None:
     """
     Analyze expected value (EV) for a given sport or data file and print results.
@@ -97,6 +104,10 @@ def analyze_evs(
     :param preferred_bookmakers: Bookmaker keys to favour when a bet ties across
                       books (see ev_core.find_positive_ev_bets). None keeps the
                       default.
+    :param ev_threshold: Minimum EV% to display. Defaults to the same value the
+                      Lambda applies, so the CLI shows what production sends.
+    :param max_fair_odds: Skip outcomes with fair odds >= this. None disables
+                      the cap.
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -130,13 +141,15 @@ def analyze_evs(
     positive_ev_bets = find_positive_ev_bets(
         odds_data,
         kelly_fraction=kelly_fraction,
+        ev_threshold=ev_threshold,
+        max_fair_odds=max_fair_odds,
         skip_started=data_file is None,
         preferred_bookmakers=preferred_bookmakers,
     )
 
     # Limit anwenden
     display_bets = positive_ev_bets[:limit] if limit is not None else positive_ev_bets
-    limit_title = f" (Top {limit})" if limit is not None else " (Alle)"
+    limit_title = f" (Top {limit})" if limit is not None else " (all)"
 
     print("\n" + "=" * 80)
     print(f" MATCHES WITH POSITIVE EXPECTED VALUE (EV){limit_title} — Logarithmic Model")
@@ -200,8 +213,24 @@ def main():
     parser.add_argument(
         "--kelly-fraction",
         type=float,
-        default=0.25,
-        help="Fraction for Kelly Criterion (Default: 0.25)",
+        default=DEFAULT_KELLY_FRACTION,
+        help=f"Fraction for Kelly Criterion (Default: {DEFAULT_KELLY_FRACTION})",
+    )
+    parser.add_argument(
+        "--ev-threshold",
+        type=float,
+        default=DEFAULT_EV_THRESHOLD,
+        help="Minimum EV%% to display. Defaults to the value the Lambda applies "
+        f"({DEFAULT_EV_THRESHOLD}), so the CLI shows what production sends. "
+        "Pass 0 to see every positive-EV bet, or a negative value to include "
+        "negative-EV bets for calibration.",
+    )
+    parser.add_argument(
+        "--max-fair-odds",
+        type=float,
+        default=DEFAULT_MAX_FAIR_ODDS,
+        help="Skip outcomes whose Pinnacle-derived fair odds are >= this "
+        f"(Default: {DEFAULT_MAX_FAIR_ODDS}). Pass 0 to disable the cap.",
     )
     parser.add_argument(
         "--preferred-bookmakers",
@@ -230,6 +259,9 @@ def main():
         args.kelly_fraction,
         args.telegram,
         preferred,
+        args.ev_threshold,
+        # 0 (or less) disables the cap rather than filtering everything out.
+        args.max_fair_odds if args.max_fair_odds > 0 else None,
     )
 
 

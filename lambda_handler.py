@@ -27,6 +27,11 @@ import json
 import logging
 import os
 
+from src.strategies.ev_core import (
+    DEFAULT_EV_THRESHOLD,
+    DEFAULT_KELLY_FRACTION,
+    DEFAULT_MAX_FAIR_ODDS,
+)
 from src.strategies.ev_service import get_all_positive_ev_bets
 from src.telegram_notifier import TelegramNotifier
 
@@ -48,10 +53,10 @@ def lambda_handler(event, context):
     :return: Summary dict for CloudWatch logs.
     """
     # --- Read configuration from environment ---
-    ev_threshold = float(os.environ.get("EV_THRESHOLD", "3.0"))
-    kelly_fraction = float(os.environ.get("KELLY_FRACTION", "0.25"))
+    ev_threshold = float(os.environ.get("EV_THRESHOLD", DEFAULT_EV_THRESHOLD))
+    kelly_fraction = float(os.environ.get("KELLY_FRACTION", DEFAULT_KELLY_FRACTION))
     max_bets = int(os.environ.get("MAX_BETS", "25"))
-    max_fair_odds = float(os.environ.get("MAX_FAIR_ODDS", "5.0"))
+    max_fair_odds = float(os.environ.get("MAX_FAIR_ODDS", DEFAULT_MAX_FAIR_ODDS))
 
     sports_raw = os.environ.get("SPORTS", "football")
     sports = [s.strip().lower() for s in sports_raw.split(",") if s.strip()]
