@@ -188,6 +188,32 @@ Storage is not a constraint: weekly capture is ~3.5 MB/year, and S3 `LIST`
 calls cost more than the bytes, so sync on a schedule you'd actually use
 rather than polling.
 
+### Reading it back
+
+The stored shape nests snapshot → event → bookmaker → market → outcome, which
+is right for capture and wrong for analysis. `load_snapshots()` flattens the
+whole local mirror into one row per price quote:
+
+```python
+from src.odds_archive import load_snapshots
+
+df = load_snapshots()          # every snapshot; pass a path for a subset
+df.groupby("bookmaker").price.count()
+```
+
+It resolves the archive from the module's own location, so it works from
+`notebooks/` without any `os.chdir`. Each row carries `filter_regions` /
+`filter_bookmakers` from the envelope — flattening discards the envelope, and
+those are what keep absence readable across a change of filter.
+
+It also derives `staleness`, how long before capture the book last moved that
+price. A quote nobody has touched in ten minutes is the usual explanation for
+a large apparent edge, so it is a column rather than something each analysis
+recomputes.
+
+`iter_quotes()` is the same thing as a generator of dicts, with no pandas
+dependency.
+
 ## Deployment
 
 ```bash

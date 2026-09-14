@@ -135,3 +135,108 @@ def test_an_empty_scan_is_still_archived(monkeypatch):
     written = json.loads(gzip.decompress(s3.calls[0]["Body"]).decode("utf-8"))
     assert written["event_count"] == 0
     assert written["errors"][0]["league"] == "x"
+
+
+def _write_snapshot(tmp_path, name, events, **envelope_kwargs):
+    path = tmp_path / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    envelope = build_envelope(events, "football", CAPTURED_AT, **envelope_kwargs)
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        json.dump(envelope, fh)
+    return path
+
+
+def _event(home, away, books):
+    return {
+        "id": f"{home}-{away}",
+        "sport_title": "Bundesliga",
+        "sport_key": "soccer_germany_bundesliga",
+        "commence_time": "2026-09-18T18:30:00Z",
+        "home_team": home,
+        "away_team": away,
+        "bookmakers": [
+            {
+                "key": key,
+                "last_update": "2026-09-18T14:59:00Z",
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": home, "price": price},
+                            {"name": away, "price": 3.0},
+                        ],
+                    }
+                ],
+            }
+            for key, price in books
+        ],
+    }
+
+
+def test_iter_quotes_flattens_to_one_row_per_price(tmp_path):
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz",
+                    [_event("A", "B", [("tipico_de", 2.1), ("bet365", 2.05)])])
+
+    quotes = list(odds_archive.iter_quotes(tmp_path))
+
+    assert len(quotes) == 4  # 2 books x 2 outcomes
+    assert {q["bookmaker"] for q in quotes} == {"tipico_de", "bet365"}
+    assert quotes[0]["league"] == "Bundesliga"
+
+
+def test_iter_quotes_carries_the_filters_onto_every_row(tmp_path):
+    # Flattening throws the envelope away, so a backtest spanning a change of
+    # filter would otherwise lose the one field that makes absence readable.
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz",
+                    [_event("A", "B", [("tipico_de", 2.1)])], regions="eu,uk")
+
+    quotes = list(odds_archive.iter_quotes(tmp_path))
+
+    assert all(q["filter_regions"] == "eu,uk" for q in quotes)
+    assert all(q["filter_bookmakers"] is None for q in quotes)
+
+
+def test_iter_quotes_reads_every_snapshot_in_order(tmp_path):
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz",
+                    [_event("A", "B", [("tipico_de", 2.1)])])
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-19/scan=b.json.gz",
+                    [_event("C", "D", [("tipico_de", 1.8)])])
+
+    assert [q["event_id"] for q in odds_archive.iter_quotes(tmp_path)] == ["A-B", "A-B", "C-D", "C-D"]
+
+
+def test_iter_quotes_skips_non_h2h_markets(tmp_path):
+    event = _event("A", "B", [("tipico_de", 2.1)])
+    event["bookmakers"][0]["markets"].append(
+        {"key": "totals", "outcomes": [{"name": "Over", "price": 1.9}]}
+    )
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz", [event])
+
+    assert {q["outcome"] for q in odds_archive.iter_quotes(tmp_path)} == {"A", "B"}
+
+
+def test_iter_quotes_on_an_empty_archive(tmp_path):
+    assert list(odds_archive.iter_quotes(tmp_path)) == []
+
+
+def test_load_snapshots_parses_timestamps_and_staleness(tmp_path):
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz",
+                    [_event("A", "B", [("tipico_de", 2.1)])])
+
+    frame = odds_archive.load_snapshots(tmp_path)
+
+    # captured_at 15:00:00, last_update 14:59:00 -> one minute stale.
+    assert frame["staleness"].iloc[0].total_seconds() == 60
+    assert frame["price"].tolist() == [2.1, 3.0]
+
+
+def test_pandas_is_not_imported_at_module_scope():
+    # odds_archive is on the Lambda's import path and pandas is not in the
+    # deployment zip, so a module-scope import would break every scan.
+    source = (odds_archive.__file__)
+    with open(source, encoding="utf-8") as fh:
+        top_level = [
+            line for line in fh
+            if line.startswith("import pandas") or line.startswith("from pandas")
+        ]
+    assert top_level == []
