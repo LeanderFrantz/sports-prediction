@@ -39,7 +39,11 @@ PREFERRED_BOOKMAKER_KEYS = ["tipico_de", "winamax_de"]
 # Application defaults, shared by the CLI and the Lambda so the two cannot
 # drift apart. find_positive_ev_bets' own signature defaults stay permissive
 # (no threshold, no cap) -- these are what the entry points apply.
-DEFAULT_EV_THRESHOLD = 3.0
+#
+# These are the values notebooks/backtest_ev_strategy.ipynb was run at, and
+# the only place they are written down. Keep them in step with its config
+# cell rather than nudging them here.
+DEFAULT_EV_THRESHOLD = 2.0
 DEFAULT_MAX_FAIR_ODDS = 5.0
 DEFAULT_KELLY_FRACTION = 0.25
 

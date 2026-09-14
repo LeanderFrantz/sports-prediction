@@ -46,17 +46,11 @@ for var in ODDS_API_KEY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_IDS; do
     exit 1
   fi
 done
-export EV_THRESHOLD="${EV_THRESHOLD:-1.0}"
-export SPORTS="${SPORTS:-football}"
-export KELLY_FRACTION="${KELLY_FRACTION:-0.25}"
-export MAX_BETS="${MAX_BETS:-25}"
-export MAX_FAIR_ODDS="${MAX_FAIR_ODDS:-5.0}"
-# Empty is valid: the code falls back to its own default list.
-export PREFERRED_BOOKMAKERS="${PREFERRED_BOOKMAKERS:-}"
-# Both empty by default: the code falls back to DEFAULT_REGIONS.
-export ODDS_REGIONS="${ODDS_REGIONS:-}"
-export ODDS_BOOKMAKERS="${ODDS_BOOKMAKERS:-}"
-export DISPLAY_TIMEZONE="${DISPLAY_TIMEZONE:-}"
+# Every other variable is optional and deliberately gets no default here.
+# An unset one is left out of the function environment below, so ev_core.py
+# and lambda_handler.py supply the value -- they are the single source of
+# truth. Repeating the defaults in this script is how EV_THRESHOLD came to
+# deploy at 1.0 while the code said 3.0 and the backtest said 2.
 
 # --- 1) Build the deployment zip ---
 # Only `requests` is needed at runtime — pandas/python-dotenv/pytest are
@@ -130,8 +124,13 @@ keys = [
     "ODDS_BOOKMAKERS",
     "DISPLAY_TIMEZONE",
 ]
+# Unset or empty variables are omitted rather than sent as "". Lambda
+# replaces the whole environment on update, so leaving one out is exactly
+# what lets the code's own default apply; an empty string would not, since
+# float("") raises.
 with open(sys.argv[1], "w", encoding="utf-8") as fh:
-    json.dump({"Variables": {k: os.environ[k] for k in keys}}, fh)
+    env = {k: v for k in keys if (v := os.environ.get(k, "").strip())}
+    json.dump({"Variables": env}, fh)
 PYEOF
 ENV_VARS="file://$ENV_FILE"
 

@@ -97,7 +97,7 @@ function's configuration on Lambda. See `.env.example`.
 | `TELEGRAM_BOT_TOKEN` | — | Bot token. Required for the Telegram path. |
 | `TELEGRAM_CHAT_IDS` | — | Comma-separated chat/group IDs. |
 | `SPORTS` | `football` | Comma-separated sports to scan. |
-| `EV_THRESHOLD` | `3.0` | Minimum EV% to report. |
+| `EV_THRESHOLD` | `2.0` | Minimum EV% to report. |
 | `MAX_FAIR_ODDS` | `5.0` | Skip outcomes with fair odds at or above this. |
 | `KELLY_FRACTION` | `0.25` | Fractional Kelly multiplier. |
 | `MAX_BETS` | `25` | Cap on how many bets a notification carries. |
