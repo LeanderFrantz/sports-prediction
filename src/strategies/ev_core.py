@@ -359,15 +359,25 @@ def find_positive_ev_bets(
 
             odds_dict = _outcome_prices(h2h_market)
 
-            # Does this bookie have all odds for our outcomes? A missing one
-            # stops the loop, leaving a short list for the check below --
-            # which is what decides, so a separate flag added nothing.
+            # Does this bookie have a usable price for all our outcomes? A
+            # missing or unusable one stops the loop, leaving a short list for
+            # the check below -- which is what decides, so a separate flag
+            # added nothing.
+            #
+            # "Usable" means finite and > 1.0. Pinnacle's side is validated by
+            # solve_logarithmic_pure, but nothing validated the books we
+            # compare against, and a suspended or settled line can come back
+            # quoted at exactly 1.00 -- on which Kelly's b = odds - 1 divides
+            # by zero. A positive ev_threshold hides that (such a bet is always
+            # -EV, so it never reaches the division), but a negative one -- the
+            # calibration setting -- took the whole scan down with it.
             bookie_odds: list[float] = []
             for name in outcomes_order:
                 key = _find_draw_key(odds_dict) if name == "Draw" else name
-                if key not in odds_dict:
+                price = odds_dict.get(key)
+                if price is None or not math.isfinite(price) or price <= 1.0:
                     break
-                bookie_odds.append(odds_dict[key])
+                bookie_odds.append(price)
 
             if len(bookie_odds) != len(pinnacle_odds):
                 continue

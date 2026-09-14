@@ -427,3 +427,23 @@ def test_unknown_display_timezone_falls_back_to_utc():
     )
 
     assert bets[0]["kickoff"] == "Fri, 28 Aug 16:30"
+
+
+def test_unusable_bookmaker_price_does_not_crash_the_scan():
+    # A suspended or settled line can come back quoted at exactly 1.00, on
+    # which Kelly's b = odds - 1 divides by zero. Only the Pinnacle side was
+    # validated, so this took down the whole scan -- but only at a negative
+    # ev_threshold, since a positive one filters the bet out first.
+    match = _match("A", "B", books=[("betrivers", "BetRivers", 1.00)])
+    good = _match("C", "D", books=[("betrivers", "BetRivers", 2.10)])
+
+    bets = find_positive_ev_bets([match, good], ev_threshold=-50.0)
+
+    # The unusable line is skipped; every other match still comes through.
+    assert {b["match"] for b in bets} == {"C - D"}
+
+
+def test_non_finite_bookmaker_price_is_skipped():
+    match = _match("A", "B", books=[("betrivers", "BetRivers", float("inf"))])
+
+    assert find_positive_ev_bets([match], ev_threshold=-50.0) == []
