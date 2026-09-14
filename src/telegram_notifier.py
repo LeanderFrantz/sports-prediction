@@ -151,14 +151,20 @@ class TelegramNotifier:
         :param kelly_fraction: Kelly fraction used (for display only).
         :return: Formatted HTML string.
         """
-        league = bet.get("league", "")
-        emoji = _sport_emoji(league)
+        # The "league" key is always present but its value can be None (it is
+        # the API's sport_title, which is occasionally absent), so the old
+        # bet.get("league", "") still handed a None to _sport_emoji. That
+        # raised while *building* the message -- before anything was sent --
+        # so one malformed match lost the entire batch of bets, not just its
+        # own entry. Treated like the kickoff: omitted when unknown.
+        league = bet.get("league") or ""
+        league_line = f"{_sport_emoji(league)} {_esc(league)}\n" if league else ""
         kickoff = bet.get("kickoff")
         kickoff_line = f"📅 {_esc(kickoff)}\n" if kickoff else ""
 
         return (
             f"🎯 <b>Positive EV Bet #{index}</b>\n"
-            f"{emoji} {_esc(league)}\n"
+            f"{league_line}"
             f"{kickoff_line}"
             f"<b>{_esc(bet['match'])}</b>\n"
             f"Tip: {_esc(bet['outcome'])} ({_esc(bet['type'])})\n"

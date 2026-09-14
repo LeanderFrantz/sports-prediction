@@ -34,3 +34,14 @@ def test_format_bet_escapes_html_in_names():
 def test_format_headers_escape_sport_names():
     assert "&amp;" in TelegramNotifier.format_header(1, 3.0, ["foot&ball"])
     assert "&amp;" in TelegramNotifier.format_no_bets_message(3.0, ["foot&ball"])
+
+
+def test_format_bet_survives_a_missing_league():
+    # sport_title is occasionally absent from the API, so bet["league"] is
+    # present but None. _sport_emoji(None) used to raise while *building* the
+    # message, losing the whole batch rather than one entry.
+    text = TelegramNotifier.format_bet(_bet(league=None), 1)
+
+    assert "Positive EV Bet #1" in text
+    assert "Brighton &amp; Hove Albion - Tottenham" in text
+    assert "None" not in text
