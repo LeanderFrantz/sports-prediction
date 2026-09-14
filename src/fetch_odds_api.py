@@ -189,7 +189,10 @@ def fetch_odds_for_sport(
                      ODDS_BOOKMAKERS. When set it replaces the region filter and
                      the request is billed as a single region.
     :raises ValueError: If the sport name is invalid.
-    :return: A dictionary containing 'data' (list of odds) and 'errors' (list of failures).
+    :return: A dictionary with 'data' (list of odds), 'errors' (list of
+             failures) and 'filters' (the regions/bookmakers actually sent).
+             The archive records 'filters' so a later backtest can tell a book
+             that was not offering a bet from one that was never asked about.
     """
     all_data = []
     errors = []
@@ -233,5 +236,9 @@ def fetch_odds_for_sport(
                 logger.error("Error loading %s: %s", league, e)
                 errors.append({"league": league, "error": str(e)})
 
-    return {"data": all_data, "errors": errors}
+    return {
+        "data": all_data,
+        "errors": errors,
+        "filters": {"regions": regions, "bookmakers": bookmakers},
+    }
 

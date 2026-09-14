@@ -12,6 +12,7 @@ ev_logarithmic.py (the CLI path).
 import logging
 
 from ..fetch_odds_api import SPORTS_CONFIG, fetch_odds_for_sport
+from ..odds_archive import archive_snapshot
 from .ev_core import find_positive_ev_bets
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,19 @@ def get_positive_ev_bets(
     result = fetch_odds_for_sport(sport)
     odds_data = result["data"]
     errors = result["errors"]
+    filters = result.get("filters", {})
+
+    # Archive before anything else touches the data. The snapshot is the only
+    # thing in this pipeline that cannot be recreated later at any price, so a
+    # failure below must not cost it -- and archive_snapshot never raises, so
+    # a failure here cannot cost the notification either.
+    archive_snapshot(
+        odds_data,
+        sport,
+        regions=filters.get("regions"),
+        bookmakers=filters.get("bookmakers"),
+        errors=errors,
+    )
 
     if errors:
         for err in errors:
