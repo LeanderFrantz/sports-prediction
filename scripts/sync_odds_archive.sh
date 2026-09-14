@@ -70,5 +70,7 @@ if ! OUTPUT=$(env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_T
 fi
 
 DOWNLOADED=$(printf '%s\n' "$OUTPUT" | grep -c '^download:' || true)
-TOTAL=$(find "$DEST" -name '*.json.gz' -type f | wc -l | tr -d ' ')
+# -L because DEST is a symlink when install_sync_agent.sh has run: find stops
+# dead at an unfollowed symlink and would report zero.
+TOTAL=$(find -L "$DEST" -name '*.json.gz' -type f | wc -l | tr -d ' ')
 log "Done: $DOWNLOADED new object(s), $TOTAL snapshot(s) held locally."
