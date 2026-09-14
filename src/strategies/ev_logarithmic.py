@@ -212,7 +212,7 @@ def analyze_evs(
             notifier = TelegramNotifier()
             notifier.notify_bets(
                 bets=display_bets,
-                threshold=0.0,
+                threshold=ev_threshold,
                 sports=[sport],
                 kelly_fraction=kelly_fraction,
             )
