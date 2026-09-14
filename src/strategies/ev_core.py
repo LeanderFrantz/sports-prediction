@@ -28,14 +28,6 @@ EXCLUDED_BOOKMAKER_KEYS = {
     "smarkets",
 }
 
-# Default bookmakers to favour when the same bet is available at the same odds
-# at more than one book -- normally the ones you actually hold an account with.
-# Ordered by preference; anything not listed falls back to whichever book the
-# API returned first, i.e. no favourite. Callers override this via the
-# preferred_bookmakers argument (the Lambda and CLI read it from configuration);
-# this module deliberately reads no environment itself.
-PREFERRED_BOOKMAKER_KEYS = ["tipico_de", "winamax_de"]
-
 # Application defaults, shared by the CLI and the Lambda so the two cannot
 # drift apart. find_positive_ev_bets' own signature defaults stay permissive
 # (no threshold, no cap) -- these are what the entry points apply.
@@ -287,7 +279,11 @@ def find_positive_ev_bets(
     :param preferred_bookmakers: Bookmaker keys (as used by The Odds API, e.g.
                           "tipico_de", not the display title "Tipico") to favour
                           when the same bet ties across books, most preferred
-                          first. Defaults to PREFERRED_BOOKMAKER_KEYS.
+                          first. Which books these are is a property of whose
+                          accounts you hold, not of the strategy, so there is no
+                          default: omit it and ties fall to whichever book the
+                          API returned first. Entry points read it from
+                          PREFERRED_BOOKMAKERS.
     :param display_timezone: IANA name the kickoff times are rendered in, e.g.
                           "Europe/Berlin". Defaults to DEFAULT_DISPLAY_TIMEZONE;
                           an unknown name falls back to UTC with a warning.
@@ -297,9 +293,7 @@ def find_positive_ev_bets(
     if not math.isfinite(kelly_fraction) or not 0 <= kelly_fraction <= 1:
         raise ValueError("kelly_fraction must be finite and between 0 and 1")
 
-    preferred = (
-        PREFERRED_BOOKMAKER_KEYS if preferred_bookmakers is None else list(preferred_bookmakers)
-    )
+    preferred = list(preferred_bookmakers or [])
 
     tz = _resolve_display_timezone(display_timezone or DEFAULT_DISPLAY_TIMEZONE)
 

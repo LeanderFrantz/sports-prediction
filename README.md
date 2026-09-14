@@ -101,7 +101,7 @@ function's configuration on Lambda. See `.env.example`.
 | `MAX_FAIR_ODDS` | `5.0` | Skip outcomes with fair odds at or above this. |
 | `KELLY_FRACTION` | `0.25` | Fractional Kelly multiplier. |
 | `MAX_BETS` | `25` | Cap on how many bets a notification carries. |
-| `PREFERRED_BOOKMAKERS` | `tipico_de,winamax_de` | Books that win a tie, most preferred first. |
+| `PREFERRED_BOOKMAKERS` | — | Books that win a tie, most preferred first. Unset means no preference. |
 | `DISPLAY_TIMEZONE` | `Europe/Berlin` | Timezone for kickoff times. |
 | `ODDS_REGIONS` | `eu,uk,us,au` | Regions to request. |
 | `ODDS_BOOKMAKERS` | unset | Explicit bookmaker list; replaces `ODDS_REGIONS`. |

@@ -219,7 +219,7 @@ def test_find_positive_ev_bets_prefers_preferred_bookmaker_on_tie():
         books=[("betrivers", "BetRivers", 2.10), ("tipico_de", "Tipico", 2.10)],
     )
 
-    bets = find_positive_ev_bets([match])
+    bets = find_positive_ev_bets([match], preferred_bookmakers=["tipico_de"])
 
     assert [b["bookmaker_key"] for b in bets] == ["tipico_de"]
 
@@ -252,16 +252,21 @@ def test_find_positive_ev_bets_skips_matches_already_started():
     assert [b["match"] for b in all_bets] == ["A - B", "C - D", "E - F"]
 
 
-def test_preferred_bookmakers_argument_overrides_the_default():
+def test_no_bookmaker_is_preferred_by_default():
+    # Which books you favour depends on whose accounts you hold, so it is
+    # configuration, not an application default. With none given, the tie
+    # falls to whichever book the API returned first.
     match = _match(
         "A",
         "B",
         books=[("betrivers", "BetRivers", 2.10), ("tipico_de", "Tipico", 2.10)],
     )
 
-    bets = find_positive_ev_bets([match], preferred_bookmakers=["betrivers"])
+    assert [b["bookmaker_key"] for b in find_positive_ev_bets([match])] == ["betrivers"]
 
-    assert [b["bookmaker_key"] for b in bets] == ["betrivers"]
+    # ...and naming one still wins the tie, in either direction.
+    preferred = find_positive_ev_bets([match], preferred_bookmakers=["tipico_de"])
+    assert [b["bookmaker_key"] for b in preferred] == ["tipico_de"]
 
 
 def test_preferred_bookmakers_respects_list_order():

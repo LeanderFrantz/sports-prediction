@@ -280,7 +280,8 @@ def main():
         default=None,
         help="Comma-separated Odds API bookmaker keys to favour when a bet ties "
         "across books, most preferred first (e.g. tipico_de,winamax_de). These "
-        "are keys, not display titles. Default: PREFERRED_BOOKMAKER_KEYS",
+        "are keys, not display titles. Default: none, so the book the API "
+        "returned first wins a tie.",
     )
     parser.add_argument(
         "--timezone",

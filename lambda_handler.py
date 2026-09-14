@@ -10,14 +10,15 @@ All configuration is via environment variables:
   - ODDS_API_KEY        : The Odds API key
   - TELEGRAM_BOT_TOKEN  : Telegram bot HTTP API token
   - TELEGRAM_CHAT_IDS   : Comma-separated target chat/group IDs
-  - EV_THRESHOLD        : Minimum EV% to notify (default: 3.0)
+  - EV_THRESHOLD        : Minimum EV% to notify (default: 2.0)
   - SPORTS              : Comma-separated sports to scan (default: football)
   - KELLY_FRACTION      : Kelly criterion fraction (default: 0.25)
   - MAX_BETS            : Max number of top bets to send (default: 25)
   - PREFERRED_BOOKMAKERS: Comma-separated Odds API bookmaker keys to favour
                            when a bet ties across books, most preferred first
                            (e.g. "tipico_de,winamax_de"). Keys, not display
-                           titles. Unset keeps the in-code default.
+                           titles. Unset applies no preference, leaving a
+                           tie to whichever book the API returned first.
   - ODDS_REGIONS        : Comma-separated Odds API regions (default:
                            eu,uk,us,au). Billing is markets x regions, so
                            fewer regions costs proportionally less.
@@ -69,7 +70,8 @@ def lambda_handler(event, context):
     sports_raw = os.environ.get("SPORTS", "football")
     sports = [s.strip().lower() for s in sports_raw.split(",") if s.strip()]
 
-    # Unset or empty falls back to ev_core's default list.
+    # Unset or empty means no preference at all -- which books you favour
+    # depends on whose accounts you hold, so the code carries no default.
     preferred_raw = os.environ.get("PREFERRED_BOOKMAKERS", "")
     preferred_bookmakers = [b.strip() for b in preferred_raw.split(",") if b.strip()] or None
 
@@ -79,7 +81,7 @@ def lambda_handler(event, context):
         "Starting EV scan — sports=%s, threshold=%.2f%%, kelly=%.2f, max_bets=%d, "
         "max_fair_odds=%.2f, preferred_bookmakers=%s",
         sports, ev_threshold, kelly_fraction, max_bets, max_fair_odds,
-        preferred_bookmakers or "(default)",
+        preferred_bookmakers or "(none)",
     )
 
     # --- Run EV analysis ---
