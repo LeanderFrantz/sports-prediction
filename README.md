@@ -105,6 +105,7 @@ function's configuration on Lambda. See `.env.example`.
 | `DISPLAY_TIMEZONE` | `Europe/Berlin` | Timezone for kickoff times. |
 | `ODDS_REGIONS` | `eu,uk,us,au` | Regions to request. |
 | `ODDS_BOOKMAKERS` | unset | Explicit bookmaker list; replaces `ODDS_REGIONS`. |
+| `ODDS_ARCHIVE_BUCKET` | unset | S3 bucket to archive each raw scan to. Unset disables archiving. |
 
 ### A note on API credits
 
@@ -118,6 +119,74 @@ run logs its estimated cost.
 `PREFERRED_BOOKMAKERS` and `ODDS_BOOKMAKERS` take The Odds API's bookmaker
 **keys**, not display titles: `tipico_de`, not `Tipico`. A key that never
 appears in the fetched data is logged as a warning rather than failing.
+
+## Odds archive
+
+The Lambda otherwise discards every scan. With `ODDS_ARCHIVE_BUCKET` set it
+writes the raw API response to S3 first — one gzipped object per scan, about
+68 KB — so the strategy can later be backtested against odds that were
+actually obtainable, instead of a third party's collection taken at a
+different moment from a different set of books. Snapshots cannot be
+backfilled at any price, which is why capture runs before the EV analysis and
+never raises: a broken archive cannot cost you the notification, and a broken
+strategy cannot cost you the snapshot.
+
+The stored object wraps the untouched response in a small envelope recording
+which regions or bookmakers were *asked for* and which leagues failed to
+fetch. Without that, a later backtest cannot tell "this book was not offering
+the bet" from "this book was never in the request" — a distinction that
+changes the day `ODDS_BOOKMAKERS` replaces the region filter.
+
+```
+raw/sport=football/dt=2026-09-18/scan=20260918T150000Z.json.gz
+```
+
+Setup is two steps, after putting `ODDS_ARCHIVE_BUCKET` in `.env`:
+
+```bash
+./scripts/deploy_lambda.sh        # creates the bucket, grants the role s3:PutObject
+./scripts/setup_odds_archive.sh   # read-only IAM user + local `odds-sync` profile
+```
+
+The second exists because the Lambda writes with its execution role, which
+never expires, while your own session does. It creates a separate credential
+that can only read that one bucket, so the sync runs unattended:
+
+```bash
+./scripts/sync_odds_archive.sh    # mirrors s3://$ODDS_ARCHIVE_BUCKET/raw to data/raw
+```
+
+`aws s3 sync` is state-based, so missed runs cost nothing — the next one
+catches up on everything at once. To have it run on a schedule:
+
+```bash
+./scripts/install_sync_agent.sh
+```
+
+That installs a macOS LaunchAgent that syncs daily at 18:00 and at every
+login. launchd rather than cron because it fires a missed run when the machine
+next wakes, and coalesces several missed firings into one rather than
+replaying each.
+
+The installer exists because the agent cannot live in this repo. macOS TCC
+protects `~/Documents` from background processes, and that covers *executing*
+a file stored there — a LaunchAgent pointed at `scripts/sync_odds_archive.sh`
+dies with exit 126, "Operation not permitted", before the script runs. So the
+installer places a copy and the archive itself under
+`~/Library/Application Support/sports-prediction/`, passes configuration
+through the plist (the copy cannot read `.env` either), and symlinks
+`data/raw` back into the repo so notebook paths are unchanged. Re-run it after
+editing the sync script.
+
+Running `./scripts/sync_odds_archive.sh` by hand from your own shell is
+unaffected by any of this — the restriction applies only to background jobs.
+
+Logs land in `~/Library/Logs/odds-sync.log`; `launchctl print
+gui/$(id -u)/de.frantz.odds-sync` shows the last exit code.
+
+Storage is not a constraint: weekly capture is ~3.5 MB/year, and S3 `LIST`
+calls cost more than the bytes, so sync on a schedule you'd actually use
+rather than polling.
 
 ## Deployment
 
@@ -154,6 +223,8 @@ src/
   fetch_odds_api.py          The Odds API client: concurrent per-league fetches,
                              retries on transient failures, region/bookmaker filters
   telegram_notifier.py       Formats and sends bets, chunked under Telegram's 4096-char limit
+  odds_archive.py            Writes each raw scan to S3. Fail-soft: never raises into
+                             the pipeline, since the notification is the product
   strategies/
     ev_core.py               The matching, de-vig, EV and Kelly logic. Pure functions:
                              no printing, no I/O, no environment. Change it here and

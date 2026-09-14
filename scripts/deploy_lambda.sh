@@ -99,6 +99,49 @@ else
 fi
 ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)
 
+# --- 2b) Ensure the odds archive bucket exists and the role can write to it ---
+# Skipped entirely when ODDS_ARCHIVE_BUCKET is unset: archiving is optional and
+# src/odds_archive.py no-ops without it.
+if [ -n "${ODDS_ARCHIVE_BUCKET:-}" ]; then
+  echo "==> Checking odds archive bucket..."
+  if ! aws s3api head-bucket --bucket "$ODDS_ARCHIVE_BUCKET" >/dev/null 2>&1; then
+    BUCKET_REGION="$(aws configure get region || echo us-east-1)"
+    # us-east-1 is the one region that *rejects* a LocationConstraint rather
+    # than requiring one, so it needs a different call.
+    if [ "$BUCKET_REGION" = "us-east-1" ]; then
+      aws s3api create-bucket --bucket "$ODDS_ARCHIVE_BUCKET" >/dev/null
+    else
+      aws s3api create-bucket --bucket "$ODDS_ARCHIVE_BUCKET" \
+        --create-bucket-configuration "LocationConstraint=$BUCKET_REGION" >/dev/null
+    fi
+    aws s3api put-public-access-block \
+      --bucket "$ODDS_ARCHIVE_BUCKET" \
+      --public-access-block-configuration \
+        "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+    echo "    Created $ODDS_ARCHIVE_BUCKET in $BUCKET_REGION."
+  else
+    echo "    $ODDS_ARCHIVE_BUCKET already exists."
+  fi
+
+  # Least privilege: the function only ever writes new objects. No read, no
+  # list, no delete -- an archive it cannot read is an archive it cannot
+  # corrupt, and a stray overwrite would destroy an unrecoverable snapshot.
+  aws iam put-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-name odds-archive-write \
+    --policy-document "{
+      \"Version\": \"2012-10-17\",
+      \"Statement\": [{
+        \"Effect\": \"Allow\",
+        \"Action\": \"s3:PutObject\",
+        \"Resource\": \"arn:aws:s3:::$ODDS_ARCHIVE_BUCKET/*\"
+      }]
+    }"
+  echo "    Granted s3:PutObject on $ODDS_ARCHIVE_BUCKET."
+else
+  echo "==> ODDS_ARCHIVE_BUCKET unset; odds archiving stays disabled."
+fi
+
 # Serialise the environment as JSON rather than the CLI's `Variables={k=v,...}`
 # shorthand: that parser splits on commas, so a comma-separated TELEGRAM_CHAT_IDS
 # (or any value containing a comma or `=`) makes the deploy fail outright.
@@ -123,6 +166,7 @@ keys = [
     "ODDS_REGIONS",
     "ODDS_BOOKMAKERS",
     "DISPLAY_TIMEZONE",
+    "ODDS_ARCHIVE_BUCKET",
 ]
 # Unset or empty variables are omitted rather than sent as "". Lambda
 # replaces the whole environment on update, so leaving one out is exactly

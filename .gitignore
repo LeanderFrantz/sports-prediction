@@ -4,6 +4,10 @@ config.json
 # large diff on each run and stale data in the history.
 data/*.csv
 data/*.jsonl
+# Local mirror of the S3 odds archive, rebuilt by scripts/sync_odds_archive.sh.
+# No trailing slash: install_sync_agent.sh makes this a symlink into
+# Application Support, and a trailing slash would only match a real directory.
+data/raw
 .pytest_cache/
 docs
 .env
