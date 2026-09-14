@@ -192,7 +192,9 @@ rather than polling.
 
 The stored shape nests snapshot → event → bookmaker → market → outcome, which
 is right for capture and wrong for analysis. `load_snapshots()` flattens the
-whole local mirror into one row per price quote:
+whole local mirror to one row per market — home, draw and away prices side by
+side, which is the grain analysis works at, since de-vigging needs every price
+in a market at once:
 
 ```python
 import sys, os
@@ -215,8 +217,14 @@ price. A quote nobody has touched in ten minutes is the usual explanation for
 a large apparent edge, so it is a column rather than something each analysis
 recomputes.
 
-`iter_quotes()` is the same thing as a generator of dicts, with no pandas
-dependency.
+`iter_markets()` is the same rows as a generator of dicts with no pandas
+dependency; `iter_quotes()` gives the long, one-price-per-row form for the
+questions that really are per-outcome.
+
+`n_outcomes` is worth watching: the first real scan caught a book quoting a
+2-way h2h on a football match 41 other books priced 3-way. `ev_core` skips
+such a market (its outcome set has to match Pinnacle's), but the column makes
+it visible rather than silent.
 
 ## Deployment
 

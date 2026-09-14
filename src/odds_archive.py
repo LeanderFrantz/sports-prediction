@@ -26,6 +26,10 @@ import pathlib
 from datetime import datetime, timezone
 from typing import Iterator
 
+# Imported rather than restated so the reader and the strategy cannot disagree
+# about what counts as a draw -- matching it by substring was a real bug once.
+from .strategies.ev_core import DRAW_OUTCOME_LABELS
+
 logger = logging.getLogger(__name__)
 
 # Bucket to archive into. Unset disables archiving entirely, which is what
@@ -184,25 +188,11 @@ def archive_snapshot(
 DEFAULT_ARCHIVE_DIR = pathlib.Path(__file__).resolve().parents[1] / "data" / "raw"
 
 
-def iter_quotes(
+def _iter_markets(
     path: "str | pathlib.Path | None" = None,
     market_key: str = "h2h",
-) -> "Iterator[dict]":
-    """
-    Flatten archived snapshots into one dict per price quote.
-
-    The stored shape nests snapshot → event → bookmaker → market → outcome,
-    which is right for capture and wrong for analysis. This yields the long
-    form: one row per (scan, event, bookmaker, outcome).
-
-    `filter_regions` / `filter_bookmakers` are carried onto every row on
-    purpose. They are what lets a backtest spanning a change of filter tell a
-    book that was not offering a price from one that was never requested —
-    which is invisible once the rows are flattened and the envelope is gone.
-
-    :param path: Archive directory or glob. Defaults to the local mirror.
-    :param market_key: Market to extract; only h2h is fetched today.
-    """
+) -> "Iterator[tuple[dict, dict, dict, dict]]":
+    """Walk the archive, yielding (snapshot, event, bookmaker, market)."""
     target = pathlib.Path(path) if path is not None else DEFAULT_ARCHIVE_DIR
     files = sorted(
         glob.glob(str(target), recursive=True)
@@ -213,28 +203,95 @@ def iter_quotes(
     for file_path in files:
         with gzip.open(file_path, "rt", encoding="utf-8") as fh:
             snapshot = json.load(fh)
-        filters = snapshot.get("filters", {})
         for event in snapshot.get("events", []):
             for bookmaker in event.get("bookmakers", []):
                 for market in bookmaker.get("markets", []):
-                    if market.get("key") != market_key:
-                        continue
-                    for outcome in market.get("outcomes", []):
-                        yield {
-                            "captured_at": snapshot.get("captured_at"),
-                            "filter_regions": filters.get("regions"),
-                            "filter_bookmakers": filters.get("bookmakers"),
-                            "league": event.get("sport_title"),
-                            "sport_key": event.get("sport_key"),
-                            "event_id": event.get("id"),
-                            "commence_time": event.get("commence_time"),
-                            "home_team": event.get("home_team"),
-                            "away_team": event.get("away_team"),
-                            "bookmaker": bookmaker.get("key"),
-                            "last_update": bookmaker.get("last_update"),
-                            "outcome": outcome.get("name"),
-                            "price": outcome.get("price"),
-                        }
+                    if market.get("key") == market_key:
+                        yield snapshot, event, bookmaker, market
+
+
+def _common_fields(snapshot: dict, event: dict, bookmaker: dict) -> dict:
+    """
+    Fields shared by both row shapes.
+
+    `filter_regions` / `filter_bookmakers` ride on every row on purpose: the
+    envelope is gone once rows are flattened, and they are what lets a
+    backtest spanning a change of filter tell a book that was not offering a
+    price from one that was never requested.
+    """
+    filters = snapshot.get("filters", {})
+    return {
+        "captured_at": snapshot.get("captured_at"),
+        "filter_regions": filters.get("regions"),
+        "filter_bookmakers": filters.get("bookmakers"),
+        "league": event.get("sport_title"),
+        "sport_key": event.get("sport_key"),
+        "event_id": event.get("id"),
+        "commence_time": event.get("commence_time"),
+        "home_team": event.get("home_team"),
+        "away_team": event.get("away_team"),
+        "bookmaker": bookmaker.get("key"),
+        "last_update": bookmaker.get("last_update"),
+    }
+
+
+def iter_markets(
+    path: "str | pathlib.Path | None" = None,
+    market_key: str = "h2h",
+) -> "Iterator[dict]":
+    """
+    Yield one dict per (scan, event, bookmaker), prices side by side.
+
+    This is the grain analysis actually works at. A single outcome is not a
+    unit you can do anything with: de-vigging needs every price in the market
+    at once, which is why solve_logarithmic_pure takes [home, draw, away]
+    together — and it is the shape the football-data.co.uk backtest already
+    uses (PSH/PSD/PSA).
+
+    The draw is matched against ev_core.DRAW_OUTCOME_LABELS rather than by
+    substring, and imported from there rather than restated, so the two cannot
+    disagree about what counts as a draw. `away_price` is None for a 2-way
+    market (tennis, basketball).
+    """
+    for snapshot, event, bookmaker, market in _iter_markets(path, market_key):
+        prices = {
+            outcome.get("name"): outcome.get("price")
+            for outcome in market.get("outcomes", [])
+            if outcome.get("name") is not None
+        }
+        draw_key = next(
+            (k for k in prices if k.strip().lower() in DRAW_OUTCOME_LABELS), None
+        )
+        home, away = event.get("home_team"), event.get("away_team")
+
+        yield {
+            **_common_fields(snapshot, event, bookmaker),
+            "home_price": prices.get(home),
+            "draw_price": prices.get(draw_key) if draw_key else None,
+            "away_price": prices.get(away),
+            "n_outcomes": len(prices),
+        }
+
+
+def iter_quotes(
+    path: "str | pathlib.Path | None" = None,
+    market_key: str = "h2h",
+) -> "Iterator[dict]":
+    """
+    Yield one dict per individual price, the long form.
+
+    Kept for the questions that really are per-outcome — "what did every book
+    quote on the draw" — but iter_markets() is the default for a reason; see
+    its docstring.
+    """
+    for snapshot, event, bookmaker, market in _iter_markets(path, market_key):
+        common = _common_fields(snapshot, event, bookmaker)
+        for outcome in market.get("outcomes", []):
+            yield {
+                **common,
+                "outcome": outcome.get("name"),
+                "price": outcome.get("price"),
+            }
 
 
 def load_snapshots(
@@ -248,12 +305,14 @@ def load_snapshots(
     import path, and pandas is not in the deployment zip. A module-scope import
     here would break every scan.
 
-    :return: DataFrame with one row per quote, plus a `staleness` timedelta
-             (how long before capture the book last moved that price).
+    :return: DataFrame with one row per (scan, event, bookmaker) — home, draw
+             and away prices side by side — plus a `staleness` timedelta (how
+             long before capture the book last moved that line). Use
+             iter_quotes() for the long, one-price-per-row form.
     """
     import pandas as pd
 
-    frame = pd.DataFrame(iter_quotes(path, market_key))
+    frame = pd.DataFrame(iter_markets(path, market_key))
     if frame.empty:
         return frame
 

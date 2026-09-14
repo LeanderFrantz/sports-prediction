@@ -219,15 +219,45 @@ def test_iter_quotes_on_an_empty_archive(tmp_path):
     assert list(odds_archive.iter_quotes(tmp_path)) == []
 
 
-def test_load_snapshots_parses_timestamps_and_staleness(tmp_path):
+def test_load_snapshots_is_one_row_per_market(tmp_path):
+    # A single outcome is not a unit you can do anything with: de-vigging
+    # needs every price in the market at once.
     _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz",
-                    [_event("A", "B", [("tipico_de", 2.1)])])
+                    [_event("A", "B", [("tipico_de", 2.1), ("bet365", 2.05)])])
 
     frame = odds_archive.load_snapshots(tmp_path)
 
+    assert len(frame) == 2  # two books, not four outcomes
+    assert frame["home_price"].tolist() == [2.1, 2.05]
+    assert frame["away_price"].tolist() == [3.0, 3.0]
     # captured_at 15:00:00, last_update 14:59:00 -> one minute stale.
     assert frame["staleness"].iloc[0].total_seconds() == 60
-    assert frame["price"].tolist() == [2.1, 3.0]
+
+
+def test_iter_markets_pairs_the_draw_with_home_and_away(tmp_path):
+    event = _event("A", "B", [("tipico_de", 2.1)])
+    event["bookmakers"][0]["markets"][0]["outcomes"].append(
+        {"name": "Unentschieden", "price": 3.4}
+    )
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz", [event])
+
+    (row,) = list(odds_archive.iter_markets(tmp_path))
+
+    # Matched against ev_core's labels, so a German-language draw resolves.
+    assert (row["home_price"], row["draw_price"], row["away_price"]) == (2.1, 3.4, 3.0)
+    assert row["n_outcomes"] == 3
+
+
+def test_iter_markets_leaves_the_draw_empty_on_a_2_way_market(tmp_path):
+    # Real: a book quoted h2h with no draw on a football match 41 other books
+    # priced 3-way. ev_core skips it; the reader should show it, not hide it.
+    _write_snapshot(tmp_path, "sport=football/dt=2026-09-18/scan=a.json.gz",
+                    [_event("A", "B", [("tipico_de", 2.1)])])
+
+    (row,) = list(odds_archive.iter_markets(tmp_path))
+
+    assert row["draw_price"] is None
+    assert row["n_outcomes"] == 2
 
 
 def test_pandas_is_not_imported_at_module_scope():
