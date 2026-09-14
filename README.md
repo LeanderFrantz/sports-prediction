@@ -195,14 +195,18 @@ is right for capture and wrong for analysis. `load_snapshots()` flattens the
 whole local mirror into one row per price quote:
 
 ```python
+import sys, os
+sys.path.append(os.path.abspath(".."))   # from notebooks/; the repo root is not on sys.path
+
 from src.odds_archive import load_snapshots
 
 df = load_snapshots()          # every snapshot; pass a path for a subset
 df.groupby("bookmaker").price.count()
 ```
 
-It resolves the archive from the module's own location, so it works from
-`notebooks/` without any `os.chdir`. Each row carries `filter_regions` /
+It resolves the *archive* from the module's own location, so no `os.chdir` is
+needed — but Python still has to find `src` itself, hence the `sys.path` line
+that `notebooks/backtest_ev_strategy.ipynb` already opens with. Each row carries `filter_regions` /
 `filter_bookmakers` from the envelope — flattening discards the envelope, and
 those are what keep absence readable across a change of filter.
 
